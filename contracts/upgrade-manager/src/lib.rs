@@ -19,7 +19,7 @@ mod governance;
 mod timelock;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String};
+use soroban_sdk::{contract, contractimpl, symbol_short, vec, Address, BytesN, Env, String};
 
 use governance::{
     cancel_proposal, cast_vote, create_proposal, finalize_voting, load_admin, load_config,
@@ -61,14 +61,9 @@ impl UpgradeManager {
         quorum: u32,
         approval_threshold_pct: u32,
     ) -> Result<(), Error> {
-        if env
-            .storage()
-            .instance()
-            .has(&types::DataKey::Config)
-        {
+        if env.storage().instance().has(&types::DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
-
         if timelock_delay == 0 {
             return Err(Error::InvalidTimelockDelay);
         }
@@ -78,7 +73,6 @@ impl UpgradeManager {
         if approval_threshold_pct == 0 || approval_threshold_pct > 100 {
             return Err(Error::InvalidThreshold);
         }
-
         save_admin(&env, &admin);
         save_config(
             &env,
@@ -112,7 +106,6 @@ impl UpgradeManager {
         if caller != admin {
             return Err(Error::Unauthorized);
         }
-
         if timelock_delay == 0 {
             return Err(Error::InvalidTimelockDelay);
         }
@@ -122,7 +115,6 @@ impl UpgradeManager {
         if approval_threshold_pct == 0 || approval_threshold_pct > 100 {
             return Err(Error::InvalidThreshold);
         }
-
         save_config(
             &env,
             &Config {
@@ -223,9 +215,14 @@ impl UpgradeManager {
         // Enforce timelock
         assert_timelock_passed(&env, &proposal)?;
 
-        // Perform the cross-contract upgrade
-        let target_client = soroban_sdk::ContractClient::new(&env, &proposal.target);
-        target_client.upgrade(&proposal.new_wasm_hash);
+        // Perform the cross-contract upgrade by invoking the target contract's
+        // `upgrade` function, which is the standard Soroban upgrade interface
+        // (env.deployer().update_current_contract_wasm called from within the target).
+        env.invoke_contract::<()>(
+            &proposal.target,
+            &symbol_short!("upgrade"),
+            vec![&env, proposal.new_wasm_hash.to_val()],
+        );
 
         proposal.status = ProposalStatus::Executed;
         governance::save_proposal(&env, &proposal);
@@ -286,22 +283,25 @@ impl UpgradeManager {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{vec, Address, BytesN, Env, String};
+    use soroban_sdk::{Address, BytesN, Env, String};
 
-    // ---- helpers -----------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
 
-    fn setup() -> (Env, Address, UpgradeManagerClient<'static>) {
+    // In soroban-sdk 22 the generated test client panics on contract errors
+    // unless the `try_` prefixed variant is used. Success-path methods return
+    // T directly (no wrapping).
+
+    /// Returns (env, admin, contract_id, client).
+    fn setup() -> (Env, Address, Address, UpgradeManagerClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
-
-        client
-            .initialize(&admin, &17_280u32, &3u32, &51u32)
-            .unwrap();
-
-        (env, admin, client)
+        client.initialize(&admin, &17_280u32, &3u32, &51u32);
+        (env, admin, contract_id, client)
     }
 
     fn wasm_hash(env: &Env) -> BytesN<32> {
@@ -312,11 +312,34 @@ mod tests {
         String::from_str(env, s)
     }
 
-    // ---- initialize --------------------------------------------------------
+    /// Advance the ledger past the 17 280-ledger timelock while keeping the
+    /// contract's instance and persistent storage TTLs alive so calls don't
+    /// see an archived entry.
+    ///
+    /// `proposal_id` — the proposal whose persistent entry needs a TTL bump.
+    fn advance_past_timelock(env: &Env, contract_id: &Address, proposal_id: u64) {
+        use soroban_sdk::testutils::storage::Instance;
+        use types::DataKey;
+        const ADVANCE: u32 = 17_281;
+        const BUMP: u32 = ADVANCE + 10_000;
+        env.as_contract(contract_id, || {
+            // Extend instance storage (Config, Admin, ProposalCount)
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            // Extend the specific proposal entry
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(proposal_id), BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += ADVANCE);
+    }
+
+    // -----------------------------------------------------------------------
+    // initialize
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_initialize_success() {
-        let (env, admin, client) = setup();
+        let (_env, admin, _cid, client) = setup();
         let config = client.get_config();
         assert_eq!(config.timelock_delay, 17_280);
         assert_eq!(config.quorum, 3);
@@ -326,36 +349,37 @@ mod tests {
 
     #[test]
     fn test_initialize_twice_fails() {
-        let (_, admin, client) = setup();
-        let res = client.initialize(&admin, &100u32, &1u32, &51u32);
-        assert_eq!(res, Err(Ok(Error::AlreadyInitialized)));
+        let (_env, admin, _cid, client) = setup();
+        assert_eq!(
+            client.try_initialize(&admin, &100u32, &1u32, &51u32),
+            Err(Ok(Error::AlreadyInitialized))
+        );
     }
 
     #[test]
     fn test_initialize_zero_delay_fails() {
         let env = Env::default();
         env.mock_all_auths();
-        let contract_id = env.register(UpgradeManager, ());
-        let client = UpgradeManagerClient::new(&env, &contract_id);
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
         assert_eq!(
-            client.initialize(&admin, &0u32, &1u32, &51u32),
+            client.try_initialize(&admin, &0u32, &1u32, &51u32),
             Err(Ok(Error::InvalidTimelockDelay))
         );
     }
 
-    // ---- propose_upgrade ---------------------------------------------------
+    // -----------------------------------------------------------------------
+    // propose_upgrade
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_create_proposal() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         assert_eq!(id, 0u64);
-
-        let proposal = client.get_proposal(&id).unwrap();
+        let proposal = client.get_proposal(&id);
         assert_eq!(proposal.status, ProposalStatus::Active);
         assert_eq!(proposal.target, target);
         assert_eq!(proposal.yes_votes, 0);
@@ -363,187 +387,162 @@ mod tests {
 
     #[test]
     fn test_description_too_long() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        // 257 'a' characters
         let long_desc = String::from_str(&env, &"a".repeat(257));
         assert_eq!(
-            client.propose_upgrade(&admin, &target, &wasm_hash(&env), &long_desc),
+            client.try_propose_upgrade(&admin, &target, &wasm_hash(&env), &long_desc),
             Err(Ok(Error::DescriptionTooLong))
         );
     }
 
-    // ---- vote --------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // vote
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_vote_yes_no() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
-
-        let voter1 = Address::generate(&env);
-        let voter2 = Address::generate(&env);
-        let voter3 = Address::generate(&env);
-
-        client.vote(&voter1, &id, &true).unwrap();
-        client.vote(&voter2, &id, &true).unwrap();
-        client.vote(&voter3, &id, &false).unwrap();
-
-        let proposal = client.get_proposal(&id).unwrap();
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
+        client.vote(&Address::generate(&env), &id, &true);
+        client.vote(&Address::generate(&env), &id, &true);
+        client.vote(&Address::generate(&env), &id, &false);
+        let proposal = client.get_proposal(&id);
         assert_eq!(proposal.yes_votes, 2);
         assert_eq!(proposal.no_votes, 1);
     }
 
     #[test]
     fn test_double_vote_fails() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         let voter = Address::generate(&env);
-        client.vote(&voter, &id, &true).unwrap();
+        client.vote(&voter, &id, &true);
         assert_eq!(
-            client.vote(&voter, &id, &true),
+            client.try_vote(&voter, &id, &true),
             Err(Ok(Error::AlreadyVoted))
         );
     }
 
     #[test]
     fn test_vote_on_unknown_proposal_fails() {
-        let (env, _, client) = setup();
+        let (env, _admin, _cid, client) = setup();
         let voter = Address::generate(&env);
         assert_eq!(
-            client.vote(&voter, &999u64, &true),
+            client.try_vote(&voter, &999u64, &true),
             Err(Ok(Error::ProposalNotFound))
         );
     }
 
-    // ---- finalize_voting ---------------------------------------------------
+    // -----------------------------------------------------------------------
+    // finalize
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_finalize_before_timelock_fails() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
-        // Vote enough to pass
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         for _ in 0..3 {
-            client.vote(&Address::generate(&env), &id, &true).unwrap();
+            client.vote(&Address::generate(&env), &id, &true);
         }
         assert_eq!(
-            client.finalize(&id),
+            client.try_finalize(&id),
             Err(Ok(Error::TimelockNotExpired))
         );
     }
 
     #[test]
     fn test_finalize_passes_with_quorum() {
-        let (env, admin, client) = setup();
+        let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         for _ in 0..3 {
-            client.vote(&Address::generate(&env), &id, &true).unwrap();
+            client.vote(&Address::generate(&env), &id, &true);
         }
-        // Advance ledger past timelock
-        env.ledger().with_mut(|l| l.sequence_number += 17_281);
-        let status = client.finalize(&id).unwrap();
-        assert_eq!(status, ProposalStatus::Queued);
+        advance_past_timelock(&env, &cid, id);
+        assert_eq!(client.finalize(&id), ProposalStatus::Queued);
     }
 
     #[test]
     fn test_finalize_defeated_without_quorum() {
-        let (env, admin, client) = setup();
+        let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
-        // Only 2 votes (quorum = 3)
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
+        // Only 2 votes, quorum = 3 → defeated
         for _ in 0..2 {
-            client.vote(&Address::generate(&env), &id, &true).unwrap();
+            client.vote(&Address::generate(&env), &id, &true);
         }
-        env.ledger().with_mut(|l| l.sequence_number += 17_281);
-        let status = client.finalize(&id).unwrap();
-        assert_eq!(status, ProposalStatus::Defeated);
+        advance_past_timelock(&env, &cid, id);
+        assert_eq!(client.finalize(&id), ProposalStatus::Defeated);
     }
 
-    // ---- cancel ------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // cancel
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_cancel_by_admin() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
-        client.cancel(&admin, &id).unwrap();
-        let proposal = client.get_proposal(&id).unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Cancelled);
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
+        client.cancel(&admin, &id);
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Cancelled);
     }
 
     #[test]
     fn test_cancel_by_non_admin_fails() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         let non_admin = Address::generate(&env);
         assert_eq!(
-            client.cancel(&non_admin, &id),
+            client.try_cancel(&non_admin, &id),
             Err(Ok(Error::Unauthorized))
         );
     }
 
     #[test]
-    fn test_cancel_executed_proposal_fails() {
-        let (env, admin, client) = setup();
+    fn test_cancel_already_cancelled_fails() {
+        let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         for _ in 0..3 {
-            client.vote(&Address::generate(&env), &id, &true).unwrap();
+            client.vote(&Address::generate(&env), &id, &true);
         }
-        env.ledger().with_mut(|l| l.sequence_number += 17_281);
-        client.finalize(&id).unwrap();
-        // Mark as Executed manually for this test path (execute() would do cross-contract call)
-        // We test the cancel-of-executed guard by cancelling a Cancelled proposal instead.
-        client.cancel(&admin, &id).unwrap(); // Cancel the queued one — now Cancelled
+        advance_past_timelock(&env, &cid, id);
+        client.finalize(&id); // → Queued
+        client.cancel(&admin, &id); // → Cancelled
         assert_eq!(
-            client.cancel(&admin, &id),
+            client.try_cancel(&admin, &id),
             Err(Ok(Error::ProposalFinalized))
         );
     }
 
-    // ---- time_until_executable ---------------------------------------------
+    // -----------------------------------------------------------------------
+    // time_until_executable
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_time_until_executable() {
-        let (env, admin, client) = setup();
+        let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
-        // At creation ledger 0, executable_at = 17_280
-        assert_eq!(client.time_until_executable(&id).unwrap(), 17_280u32);
-        env.ledger().with_mut(|l| l.sequence_number += 17_281);
-        assert_eq!(client.time_until_executable(&id).unwrap(), 0u32);
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
+        assert_eq!(client.time_until_executable(&id), 17_280u32);
+        advance_past_timelock(&env, &cid, id);
+        assert_eq!(client.time_until_executable(&id), 0u32);
     }
 
-    // ---- update_config / transfer_admin ------------------------------------
+    // -----------------------------------------------------------------------
+    // update_config / transfer_admin
+    // -----------------------------------------------------------------------
 
     #[test]
     fn test_update_config() {
-        let (_, admin, client) = setup();
-        client
-            .update_config(&admin, &1000u32, &5u32, &66u32)
-            .unwrap();
+        let (_env, admin, _cid, client) = setup();
+        client.update_config(&admin, &1000u32, &5u32, &66u32);
         let cfg = client.get_config();
         assert_eq!(cfg.timelock_delay, 1000);
         assert_eq!(cfg.quorum, 5);
@@ -552,17 +551,15 @@ mod tests {
 
     #[test]
     fn test_transfer_admin() {
-        let (env, admin, client) = setup();
+        let (env, admin, _cid, client) = setup();
         let new_admin = Address::generate(&env);
-        client.transfer_admin(&admin, &new_admin).unwrap();
+        client.transfer_admin(&admin, &new_admin);
         assert_eq!(client.get_admin(), new_admin);
         // Old admin can no longer cancel
         let target = Address::generate(&env);
-        let id = client
-            .propose_upgrade(&new_admin, &target, &wasm_hash(&env), &desc(&env, "v2"))
-            .unwrap();
+        let id = client.propose_upgrade(&new_admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         assert_eq!(
-            client.cancel(&admin, &id),
+            client.try_cancel(&admin, &id),
             Err(Ok(Error::Unauthorized))
         );
     }

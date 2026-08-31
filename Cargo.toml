@@ -3,7 +3,7 @@ resolver = "2"
 members = ["contracts/upgrade-manager"]
 
 [workspace.dependencies]
-soroban-sdk = { version = "22.0.7", features = [] }
+soroban-sdk = { version = "22.0.11", features = [] }
 
 [profile.release]
 opt-level = "z"

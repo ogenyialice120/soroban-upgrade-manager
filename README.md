@@ -197,7 +197,7 @@ stellar contract invoke \
 
 | Function | Description | Auth |
 |---|---|---|
-| `initialize` | Set admin and config | None (once only) |
+| `initialize` | Set admin and config | None (fails if already initialised) |
 | `propose_upgrade` | Create an upgrade proposal | Proposer |
 | `vote` | Cast YES/NO on a proposal | Voter |
 | `finalize` | Close voting after timelock | Anyone |

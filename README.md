@@ -159,7 +159,7 @@ stellar contract invoke \
   --approve true
 ```
 
-### 4. Finalize voting (after timelock elapses)
+### 4. Finalize voting (after voting period ends)
 
 ```bash
 stellar contract invoke \

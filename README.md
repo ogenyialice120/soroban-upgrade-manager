@@ -4,6 +4,7 @@
 [![Stellar](https://img.shields.io/badge/Built%20on-Stellar-blue)](https://stellar.org)
 [![Soroban](https://img.shields.io/badge/Smart%20Contracts-Soroban-purple)](https://soroban.stellar.org)
 [![good first issues](https://img.shields.io/github/issues/ogenyialice120/soroban-upgrade-manager/good%20first%20issue)](https://github.com/ogenyialice120/soroban-upgrade-manager/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+[![CI](https://github.com/ogenyialice120/soroban-upgrade-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/ogenyialice120/soroban-upgrade-manager/actions/workflows/ci.yml)
 
 A Soroban smart contract that manages **WASM upgrades for other contracts** through on-chain governance votes and a configurable **timelock delay** before execution.
 

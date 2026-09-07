@@ -219,7 +219,7 @@ We welcome contributions! This project welcomes contributions from the community
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 **Quick start:**
-1. Browse [open issues](https://github.com/ogenyialice120/soroban-upgrade-manager/issues) labelled `good first issue` or `Stellar Wave`
+1. Browse [open issues](https://github.com/ogenyialice120/soroban-upgrade-manager/issues) labelled `good first issue` or `issue`
 2. Comment on the issue to apply
 3. Fork → branch → PR
 

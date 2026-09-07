@@ -214,7 +214,7 @@ stellar contract invoke \
 
 ## 🤝 Contributing
 
-We welcome contributions! This project participates in the **[Stellar Wave Program](https://www.drips.network/wave/stellar)** — fix issues, earn rewards.
+We welcome contributions! This project participates 
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
@@ -229,10 +229,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 MIT — see [LICENSE](LICENSE) for details.
 
----
-
-## 🌊 Stellar Wave Program
-
-This repository participates in the **[Stellar Wave Program](https://www.drips.network/wave/stellar)** by Drips Network. Contributors who resolve issues during an active Wave earn Points that translate to real rewards from the Stellar Development Foundation.
-
-**Fix. Merge. Earn. 🌊**

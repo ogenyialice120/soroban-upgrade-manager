@@ -214,7 +214,7 @@ stellar contract invoke \
 
 ## 🤝 Contributing
 
-We welcome contributions! This project participates 
+We welcome contributions! This project welcomes contributions from the community..
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 

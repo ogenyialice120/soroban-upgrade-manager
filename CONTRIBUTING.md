@@ -1,213 +1,82 @@
 # Contributing to Soroban Upgrade Manager
 
-Thank you for your interest in contributing! This project participates in the **[Stellar Wave Program](https://www.drips.network/wave/stellar)**, where contributors earn rewards for merged pull requests.
+First off, thank you for taking the time to contribute! 🎉 
+
+Projects like `soroban-upgrade-manager` thrive because of community involvement. Whether you are fixing a typo, optimizing a Rust routine, improving test coverage, or rewriting documentation, your help is incredibly valuable.
+
+Please take a moment to review this document before submitting your first Pull Request (PR) to ensure a smooth review process.
 
 ---
 
-## Table of Contents
+## 🗺️ Code of Conduct
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [How to Contribute](#how-to-contribute)
-- [Stellar Wave Contributors](#stellar-wave-contributors)
-- [Development Setup](#development-setup)
-- [Project Structure](#project-structure)
-- [Coding Standards](#coding-standards)
-- [Testing](#testing)
-- [Pull Request Process](#pull-request-process)
-- [Issue Labels](#issue-labels)
+By participating in this project, you agree to maintain a respectful, welcoming, and inclusive environment for everyone. Please be professional and constructive in all communications.
 
 ---
 
-## Code of Conduct
+## 🛠️ Development Setup
 
-Be respectful and constructive. We follow the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) code of conduct.
-
----
-
-## Getting Started
-
-1. **Fork** the repository on GitHub.
-2. **Clone** your fork locally:
-   ```bash
-   git clone https://github.com/<your-username>/soroban-upgrade-manager.git
-   cd soroban-upgrade-manager
-   ```
-3. **Add the upstream remote**:
-   ```bash
-   git remote add upstream https://github.com/ogenyialice120/soroban-upgrade-manager.git
-   ```
-4. **Install dependencies** (see [Development Setup](#development-setup)).
-5. **Create a branch** for your work:
-   ```bash
-   git checkout -b feat/your-feature-name
-   ```
-
----
-
-## How to Contribute
-
-### Reporting Bugs
-
-Open an issue with:
-- A clear title and description
-- Steps to reproduce
-- Expected vs actual behaviour
-- Relevant error messages or logs
-
-### Suggesting Features
-
-Open an issue with the `enhancement` label. Describe the problem you want to solve and your proposed solution before writing any code — this avoids wasted effort.
-
-### Fixing Issues
-
-1. Find an open issue (see [Issue Labels](#issue-labels)).
-2. Comment on the issue to signal your intent.
-3. Create a PR once your work is ready (see [Pull Request Process](#pull-request-process)).
-
----
-
-## Stellar Wave Contributors
-
-This repo participates in the Stellar Wave Program. During an active Wave:
-
-1. **Apply** for an issue at [drips.network/wave/stellar](https://www.drips.network/wave/stellar).
-2. **Wait for assignment** — a maintainer will assign you on GitHub or through the Drips dashboard.
-3. **Work on the issue** within the Wave window (typically one week).
-4. **Submit a PR** and link it to the issue.
-5. **Earn Points** when your PR is merged and the issue is resolved.
-
-Points translate to rewards funded by the Stellar Development Foundation.
-
-> Issues tagged `Stellar Wave` are part of the active Wave cycle. Issues tagged `good first issue` are beginner-friendly and worth starting with.
-
----
-
-## Development Setup
+To contribute code to this repository, you will need to set up your local development environment.
 
 ### Prerequisites
+* **Rust**: Version 1.74+ 
+* **Stellar CLI**: Version v22+
+* **Target**: `wasm32-unknown-unknown` installed via rustup
 
-| Tool | Version | Install |
-|---|---|---|
-| Rust | 1.74+ | [rustup.rs](https://rustup.rs/) |
-| wasm32 target | — | `rustup target add wasm32-unknown-unknown` |
-| Stellar CLI | v22+ | [Stellar docs](https://developers.stellar.org/docs/tools/developer-tools/stellar-cli) |
-
-### Build
-
-```bash
-# Check that everything compiles
-cargo build
-
-# Build the production WASM artifact
-cargo build --target wasm32-unknown-unknown --release \
-  --manifest-path contracts/upgrade-manager/Cargo.toml
-```
-
-### Run Tests
-
-```bash
-cargo test
-```
-
----
-
-## Project Structure
-
-```
-soroban-upgrade-manager/
-├── contracts/
-│   └── upgrade-manager/
-│       ├── src/
-│       │   ├── lib.rs          # Contract entry point, public API, tests
-│       │   ├── governance.rs   # Proposal creation, voting, finalization
-│       │   ├── timelock.rs     # Timelock enforcement helpers
-│       │   └── types.rs        # Shared types, storage keys, errors
-│       └── Cargo.toml
-└── Cargo.toml
-```
-
-**Where to make changes:**
-
-| What you want to do | File |
-|---|---|
-| Add a new contract function | `lib.rs` |
-| Change proposal/vote logic | `governance.rs` |
-| Change timelock rules | `timelock.rs` |
-| Add a new type or error code | `types.rs` |
+### Step-by-Step Environment Preparation
+1. **Fork and clone** the repository:
+   ```bash
+   git clone https://github.com
+   cd soroban-upgrade-manager
+   ```
+2. **Add the WASM target** if you haven't already:
+   ```bash
+   rustup target add wasm32-unknown-unknown
+   ```
+3. **Verify the build** runs successfully:
+   ```bash
+   cargo build --target wasm32-unknown-unknown --release --manifest-path contracts/upgrade-manager/Cargo.toml
+   ```
+4. **Run the existing test suite** to ensure everything passes:
+   ```bash
+   cargo test
+   ```
 
 ---
 
-## Coding Standards
+## 💡 How Can I Contribute?
 
-- **Rust edition 2021** throughout.
-- `#![no_std]` — do not use the standard library.
-- Document every public function with `///` doc comments covering parameters, return value, and all error variants.
-- Run `cargo fmt` before committing.
-- Run `cargo clippy -- -D warnings` and fix all warnings.
-- Keep functions focused. If a function body exceeds ~60 lines, consider splitting it.
-- Prefer descriptive variable names over short abbreviations.
+### 1. Reporting Bugs
+If you find a security vulnerability, a bug in the timelock calculations, or unexpected execution behavior:
+* Open an **Issue** using the bug template.
+* Provide a clear description of the bug, the steps to reproduce it, and the expected vs. actual behavior.
+* If applicable, include your environment details (Rust version, Stellar CLI version).
 
----
+### 2. Suggesting Enhancements
+Want to add features like vote weight delegation, multi-token governance, or improved logging?
+* Open an **Issue** to discuss the feature concept before writing code. This ensures the design aligns with the project's goal of remaining a lean, ultra-secure upgrade layer.
 
-## Testing
-
-All logic must be tested. The test suite lives in `lib.rs` under `#[cfg(test)]`.
-
-- Use `Env::default()` with `env.mock_all_auths()` for unit tests.
-- Test the **happy path** and at least one **error path** per function.
-- Advance the ledger with `env.ledger().with_mut(|l| l.sequence_number += N)` to test time-dependent logic.
-- New features must include at least one new test. Bug fixes must include a regression test.
-
-Run tests with:
-
-```bash
-cargo test
-```
-
-To see output from passing tests:
-
-```bash
-cargo test -- --nocapture
-```
+### 3. Submitting Pull Requests
+When you are ready to submit code:
+1. **Branch Naming**: Create a new branch off `main` using a descriptive name (e.g., `feature/add-emergency-multisig` or `fix/timelock-bounds`).
+2. **Write Clean Rust**: Follow idiomatic Rust styles (`cargo fmt` and `cargo clippy` must pass without errors).
+3. **Add Tests**: If you add new logic to `governance.rs`, `timelock.rs`, or `lib.rs`, you *must* accompany it with robust unit or integration tests in the test suite.
+4. **Update Documentation**: If your changes alter configuration fields or public API functions, update the table in the main `README.md`.
 
 ---
 
-## Pull Request Process
+## 📑 Pull Request Guidelines
 
-1. **Keep PRs focused** — one issue per PR.
-2. **Write a clear description** — what changed and why; link the issue with `Closes #N`.
-3. **Pass all checks** — `cargo test`, `cargo fmt --check`, `cargo clippy -- -D warnings`.
-4. **Update docs** — if your change affects the public API, update `README.md`.
-5. **Request review** — tag a maintainer if none is assigned within 24 hours.
+Before pushing the "Create Pull Request" button, double-check that your branch fulfills the following criteria:
 
-### PR Title Format
-
-```
-<type>: <short description>
-
-Types: feat | fix | docs | refactor | test | chore
-```
-
-Examples:
-- `feat: add weighted voting support`
-- `fix: prevent double-vote on finalized proposal`
-- `docs: clarify timelock_delay units in README`
+* [ ] The code compiles successfully for the `wasm32-unknown-unknown` target.
+* [ ] All tests pass via `cargo test`.
+* [ ] The code is clean and formatted using `cargo fmt`.
+* [ ] Your commit messages are clear, concise, and explain the *why* behind the change.
+* [ ] The PR description references any related active issues (e.g., `Closes #12`).
 
 ---
 
-## Issue Labels
+## 📜 License
 
-| Label | Meaning |
-|---|---|
-| `good first issue` | Beginner-friendly; well-scoped and documented |
-| `Stellar Wave` | Part of the active Wave cycle; eligible for rewards |
-| `bug` | Something is broken |
-| `enhancement` | New feature or improvement |
-| `documentation` | Docs-only change |
-| `help wanted` | Maintainer would especially appreciate help here |
-| `high complexity` | Significant design or implementation work required |
-
----
-
-Questions? Open a [GitHub Discussion](https://github.com/ogenyialice120/soroban-upgrade-manager/discussions) or ask in the [Stellar Discord](https://discord.gg/stellardev).
+By contributing to `soroban-upgrade-manager`, you agree that your contributions will be licensed under the project's **MIT License**. 

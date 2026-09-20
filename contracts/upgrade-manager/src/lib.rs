@@ -318,7 +318,6 @@ mod tests {
     ///
     /// `proposal_id` — the proposal whose persistent entry needs a TTL bump.
     fn advance_past_timelock(env: &Env, contract_id: &Address, proposal_id: u64) {
-        use soroban_sdk::testutils::storage::Instance;
         use types::DataKey;
         const ADVANCE: u32 = 17_281;
         const BUMP: u32 = ADVANCE + 10_000;
@@ -601,13 +600,21 @@ mod tests {
     ///
     /// Flow:
     ///   1. Deploy upgrade-manager and a target contract (UpgradableTarget)
-    ///   2. Initialize the upgrade-manager (quorum=3, threshold=51%, timelock=17_280)
-    ///   3. Propose an upgrade to the target contract
-    ///   4. Cast 3 YES votes (satisfies quorum and threshold)
-    ///   5. Advance past the timelock
-    ///   6. Finalize → proposal moves to Queued
-    ///   7. Execute → upgrade manager calls target.upgrade(new_wasm_hash)
-    ///   8. Verify proposal status is Executed
+    ///   2. Upload a WASM binary to the mock ledger and obtain its hash
+    ///   3. Initialize the upgrade-manager (quorum=3, threshold=51%, timelock=17_280)
+    ///   4. Propose an upgrade to the target contract using the real WASM hash
+    ///   5. Cast 3 YES votes (satisfies quorum and threshold)
+    ///   6. Advance past the timelock (bumping both manager and target TTLs)
+    ///   7. Finalize → proposal moves to Queued
+    ///   8. Execute → upgrade manager calls target.upgrade(wasm_hash) via invoke_contract
+    ///   9. Verify proposal status is Executed
+    ///
+    /// Note on WASM in test environment:
+    /// `env.register(Contract, ())` stores the contract natively (no real WASM bytes),
+    /// but it uploads an empty-bytes WASM as a placeholder. `update_current_contract_wasm`
+    /// requires the target hash to exist in the ledger. We upload empty bytes explicitly
+    /// via `env.deployer().upload_contract_wasm()` to get a hash that the mock host
+    /// recognises, making the upgrade a self-consistent no-op (same binary, new pointer).
     #[test]
     fn test_full_governance_upgrade_flow() {
         let env = Env::default();
@@ -620,13 +627,21 @@ mod tests {
         // Deploy the target contract (the contract that will be upgraded)
         let target_id = env.register(UpgradableTarget, ());
 
+        // Upload a WASM binary to the mock ledger.
+        // We use empty bytes because that is the same placeholder that
+        // env.register() uses internally for native test contracts. The hash
+        // returned is sha256([]) = e3b0c4..., which already exists in the ledger,
+        // so update_current_contract_wasm(hash) will succeed.
+        let new_hash = env
+            .deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
+
         let admin = Address::generate(&env);
 
         // Initialize the upgrade manager
         manager.initialize(&admin, &17_280u32, &3u32, &51u32);
 
-        // Propose an upgrade: target = target_id, new_wasm_hash = dummy 32 bytes
-        let new_hash = BytesN::from_array(&env, &[0xabu8; 32]);
+        // Propose an upgrade using the real WASM hash
         let proposal_id = manager.propose_upgrade(
             &admin,
             &target_id,
@@ -653,7 +668,17 @@ mod tests {
         assert_eq!(proposal.yes_votes, 3);
         assert_eq!(proposal.no_votes, 0);
 
-        // Advance past the timelock (same helper used in other tests)
+        // Bump the target contract's instance TTL before advancing the ledger.
+        // The mock host archives instance storage that hasn't been touched within
+        // its TTL window. When execute() calls into the target, the host validates
+        // the target's instance entries. We must extend before sequence_number jumps.
+        const ADVANCE: u32 = 17_281;
+        const BUMP: u32 = ADVANCE + 10_000;
+        env.as_contract(&target_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+
+        // Advance past the timelock (manager + proposal storage)
         advance_past_timelock(&env, &manager_id, proposal_id);
 
         // time_until_executable should now return 0
@@ -663,7 +688,8 @@ mod tests {
         let status = manager.finalize(&proposal_id);
         assert_eq!(status, ProposalStatus::Queued);
 
-        // Execute the upgrade — calls target.upgrade(new_hash) via invoke_contract
+        // Execute the upgrade — calls target.upgrade(new_hash) via invoke_contract.
+        // This is the core cross-contract upgrade path being tested.
         manager.execute(&proposal_id);
 
         // Proposal must now be Executed

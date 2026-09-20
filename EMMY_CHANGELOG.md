@@ -43,13 +43,9 @@ to immediately understand the value proposition vs the Soroban native mechanism.
   (post-upgrade call succeeds with new behavior).
 
 **Why:** The existing tests covered all governance mechanics (propose, vote,
-<<<<<<< HEAD
 finalize, cancel) but none of them exercised `execute()` against a real target
 contract with a real WASM replacement. The integration test proves the cross-contract
 upgrade path actually works end-to-end, which is the core value proposition.
-=======
-finalize, cancel) but none exercised execute() against a real target contract.
-The integration test proves the cross-contract upgrade path works end-to-end.
 
 ---
 
@@ -88,4 +84,3 @@ found during local compilation and test run:
 fail in the mock host. Both are test-only issues (not contract bugs): the mock
 requires uploaded WASM to exist before referencing it, and TTLs must be manually
 bumped when advancing the ledger sequence.
->>>>>>> 3018cbe (fix(tests): fix integration test WASM hash and TTL archival issues)

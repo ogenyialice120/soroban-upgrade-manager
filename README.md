@@ -7,7 +7,39 @@
 
 A Soroban smart contract that manages **WASM upgrades for other contracts** through on-chain governance votes and a configurable **timelock delay** before execution.
 
-Most teams handle contract upgrades manually — a single admin key calls `upgrade()` directly. This contract replaces that pattern with a transparent, auditable process: a vote must pass, and a mandatory delay must elapse before any code change goes live. No more surprise upgrades.
+---
+
+## 🤔 Why Not Just Use Soroban's Native `update_current_contract_wasm`?
+
+Soroban contracts can upgrade themselves by calling
+`env.deployer().update_current_contract_wasm(new_hash)` directly. That works,
+but it places **zero constraints** on who can trigger the upgrade and when.
+
+In practice this means:
+
+| Problem | Native Soroban | Soroban Upgrade Manager |
+|---|---|---|
+| Who can upgrade? | Any address with admin auth | Must pass a governance vote |
+| Is there a mandatory delay? | No — upgrades are instant | Configurable timelock (default ≈ 24 h) |
+| Is the upgrade auditable on-chain? | No proposal trail | Full proposal + vote history on-chain |
+| Can the community stop a bad upgrade? | Only if you trust the admin | Admin can cancel; voters can reject |
+| Can you upgrade a **different** contract? | No — only self-upgrade | Yes — cross-contract upgrade via `invoke_contract` |
+
+**The real problem this solves:** A single admin key controlling an upgrade path
+is a single point of failure and a source of trust risk for users. If the admin
+key is compromised, the attacker can silently swap in malicious WASM. If the admin
+is a team, users have to trust that the team will not rug them.
+
+Soroban Upgrade Manager replaces that single-key trust with:
+1. A **transparent proposal** that anyone can inspect before it executes.
+2. A **vote** that requires a quorum of token holders to approve.
+3. A **mandatory delay** between approval and execution, giving users time to exit
+   if they disagree with the upgrade.
+
+This is the same pattern used by Compound Governor Bravo and OpenZeppelin's
+TimelockController, adapted for Soroban's contract model.
+
+---
 
 ---
 
@@ -208,6 +240,14 @@ stellar contract invoke \
 | `get_config` | Fetch governance config | Read-only |
 | `get_admin` | Fetch admin address | Read-only |
 | `time_until_executable` | Ledgers until timelock expires | Read-only |
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|---|---|
+| [`docs/walkthrough.md`](docs/walkthrough.md) | Step-by-step: propose → vote → timelock → execute on testnet |
 
 ---
 

@@ -36,19 +36,13 @@ to immediately understand the value proposition vs the Soroban native mechanism.
 
 ### Changes
 
-**contracts/upgrade-manager/src/lib.rs** — Added integration tests:
-- `UpgradableTarget` — minimal inline test contract exposing `version()` and
-  `upgrade(new_wasm_hash)`, the standard Soroban upgrade interface.
-- `test_full_governance_upgrade_flow` — end-to-end: deploy manager + target,
-  initialize, propose, vote × 3, advance past timelock, finalize → Queued,
-  execute → Executed. Verifies the cross-contract invoke_contract("upgrade")
-  path works correctly.
-- `test_execute_fails_on_active_proposal` — execute before finalize returns NotQueued.
-- `test_execute_fails_on_defeated_proposal` — execute on a Defeated proposal
-  returns NotQueued.
-- `test_execute_fails_before_timelock` — attempts execute on a proposal that
-  hasn't been finalized yet returns NotQueued.
+**contracts/upgrade-manager/src/lib.rs** — Added integration test:
+- `test_full_governance_upgrade_flow` — end-to-end test: deploy upgrade-manager,
+  deploy a minimal upgradable target contract, propose, vote × 3, advance past
+  timelock, finalize, execute. Verifies the target contract's WASM is replaced
+  (post-upgrade call succeeds with new behavior).
 
 **Why:** The existing tests covered all governance mechanics (propose, vote,
-finalize, cancel) but none exercised execute() against a real target contract.
-The integration test proves the cross-contract upgrade path works end-to-end.
+finalize, cancel) but none of them exercised `execute()` against a real target
+contract with a real WASM replacement. The integration test proves the cross-contract
+upgrade path actually works end-to-end, which is the core value proposition.

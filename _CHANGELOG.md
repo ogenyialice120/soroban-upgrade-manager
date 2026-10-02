@@ -1,9 +1,9 @@
-# EMMY_CHANGELOG
+# CHANGELOG
 
 This file is the single source of truth for all changes made to this repository
 as part of the Stellar Wave Program resubmission audit. Entries are appended in
 chronological order. Do not edit or remove prior entries.
-
+ 
 ---
 
 ## 2026-09-20 — docs/readme-and-walkthrough (PR #1)

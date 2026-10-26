@@ -28,14 +28,12 @@ pub fn assert_timelock_passed(env: &Env, proposal: &Proposal) -> Result<(), Erro
 
 /// Return how many ledgers remain until the timelock expires.
 ///
-/// Returns `0` if the timelock has already passed (i.e. execution is allowed).
-/// Does **not** check whether the proposal is in the Queued state — callers
-/// should use `assert_timelock_passed` for that.
+/// Returns `0` if the proposal is not Queued, or if execution is already
+/// permitted (current ledger >= executable_at).
 pub fn ledgers_until_executable(env: &Env, proposal: &Proposal) -> u32 {
-    let current = env.ledger().sequence();
-    if current >= proposal.executable_at {
-        0
-    } else {
-        proposal.executable_at - current
+    if proposal.status != ProposalStatus::Queued {
+        return 0;
     }
+    let current = env.ledger().sequence();
+    proposal.executable_at.saturating_sub(current)
 }

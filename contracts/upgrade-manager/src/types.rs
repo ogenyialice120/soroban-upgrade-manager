@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, contracterror, Address, BytesN};
+use soroban_sdk::{contracterror, contracttype, Address, BytesN};
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -20,17 +20,35 @@ pub enum DataKey {
 }
 
 // ---------------------------------------------------------------------------
+// TTL constants
+// ---------------------------------------------------------------------------
+
+/// Minimum TTL bump applied to instance storage on every state-changing call.
+/// 518_400 ledgers ≈ 30 days at ~5 s/ledger.
+pub const INSTANCE_TTL_BUMP: u32 = 518_400;
+
+/// Minimum TTL applied to persistent Proposal and Vote entries on write and read.
+/// 2_592_000 ledgers ≈ 150 days — long enough to outlive any realistic proposal.
+pub const PERSISTENT_TTL_BUMP: u32 = 2_592_000;
+
+// ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
 /// Global contract configuration set during initialisation.
+///
+/// All fields are copied into each `Proposal` at creation time so that
+/// `update_config` cannot change the rules of in-flight proposals.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// Minimum ledgers that must pass between proposal creation and execution.
-    /// At ~5 s/ledger, 17_280 ledgers ≈ 24 hours.
+    /// Ledgers between proposal creation and the end of the voting window.
+    /// Must be >= 1. At ~5 s/ledger, 17_280 ledgers ≈ 24 hours.
+    pub voting_period: u32,
+    /// Minimum ledgers that must pass between `finalize` and `execute`.
+    /// At ~5 s/ledger, 17_280 ledgers ≈ 24 hours. Must be >= 1.
     pub timelock_delay: u32,
-    /// Minimum number of YES votes needed for a proposal to pass.
+    /// Minimum number of total votes (YES + NO) needed for a proposal to pass.
     pub quorum: u32,
     /// Votes are weighted equally (1 per address); this is the threshold of
     /// yes/(yes+no) * 100 that must be reached (e.g. 51 = simple majority).
@@ -68,7 +86,13 @@ pub struct Proposal {
     pub new_wasm_hash: BytesN<32>,
     /// Ledger sequence at which the proposal was created.
     pub created_at: u32,
-    /// Ledger sequence after which execution is permitted (created_at + timelock_delay).
+    /// Ledger sequence at which voting closes (created_at + snap_voting_period).
+    /// Votes are accepted while ledger.sequence() <= voting_ends_at.
+    /// `finalize` is allowed only after voting_ends_at.
+    pub voting_ends_at: u32,
+    /// Ledger sequence after which execution is permitted.
+    /// Set to finalize_ledger + snap_timelock_delay when finalize() is called.
+    /// Zero until the proposal is finalized.
     pub executable_at: u32,
     /// Cumulative YES votes.
     pub yes_votes: u32,
@@ -78,8 +102,17 @@ pub struct Proposal {
     pub status: ProposalStatus,
     /// Address that created the proposal.
     pub proposer: Address,
-    /// Optional human-readable description (max 256 chars enforced in lib.rs).
+    /// Human-readable description (min 1 char, max 256 bytes).
     pub description: soroban_sdk::String,
+    // --- Snapshotted governance rules (set at creation, never changed) ---
+    /// Snapshot of Config.voting_period at creation time.
+    pub snap_voting_period: u32,
+    /// Snapshot of Config.timelock_delay at creation time.
+    pub snap_timelock_delay: u32,
+    /// Snapshot of Config.quorum at creation time.
+    pub snap_quorum: u32,
+    /// Snapshot of Config.approval_threshold_pct at creation time.
+    pub snap_threshold_pct: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -105,8 +138,9 @@ pub enum Error {
     /// The timelock period has not yet elapsed.
     TimelockNotExpired = 7,
     /// Proposal did not reach the required quorum or approval threshold.
+    /// Note: finalize() returns ProposalStatus::Defeated rather than this error.
     ProposalDefeated = 8,
-    /// Provided description exceeds the 256-character limit.
+    /// Provided description exceeds the 256-byte limit.
     DescriptionTooLong = 9,
     /// approval_threshold_pct must be between 1 and 100.
     InvalidThreshold = 10,
@@ -114,6 +148,18 @@ pub enum Error {
     InvalidTimelockDelay = 11,
     /// quorum must be at least 1.
     InvalidQuorum = 12,
-    /// Proposal is already cancelled or executed; cannot change state.
+    /// Proposal is already Executed, Cancelled, or Defeated; cannot change state.
     ProposalFinalized = 13,
+    /// Contract has not been initialised; call initialize() first.
+    NotInitialized = 14,
+    /// Arithmetic overflow in ledger or vote calculation.
+    Overflow = 15,
+    /// The voting period for this proposal has ended; no more votes accepted.
+    VotingPeriodEnded = 16,
+    /// The voting period for this proposal has not ended yet; finalize is not allowed.
+    VotingStillActive = 17,
+    /// Description must not be empty.
+    EmptyDescription = 18,
+    /// voting_period must be at least 1 ledger.
+    InvalidVotingPeriod = 19,
 }

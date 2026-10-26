@@ -156,12 +156,15 @@ stellar contract invoke \
   --network testnet \
   -- initialize \
   --admin <ADMIN_ADDRESS> \
+  --voting_period 17280 \
   --timelock_delay 17280 \
   --quorum 3 \
   --approval_threshold_pct 51
 ```
 
-> `timelock_delay` is in ledgers. At ~5 s/ledger, 17 280 ≈ 24 hours.
+> Both `voting_period` and `timelock_delay` are in ledgers. At ~5 s/ledger,
+> 17 280 ≈ 24 hours. The voting period is when votes are accepted; the timelock
+> delay is the mandatory wait between finalization and execution.
 
 ### 2. Propose an upgrade
 

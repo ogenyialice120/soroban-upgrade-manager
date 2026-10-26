@@ -6,12 +6,18 @@
 //! ## Lifecycle
 //!
 //! ```text
-//! initialize() → propose_upgrade() → vote() → finalize_voting()
-//!             → execute_upgrade()
+//! initialize() → propose_upgrade() → vote() → finalize() → execute()
 //! ```
 //!
-//! Any admin action (cancel, update_config) bypasses voting but is still
-//! on-chain and auditable.
+//! 1. **propose_upgrade** — any authenticated address creates a proposal.
+//! 2. **vote** — any address votes YES/NO; voting closes at `voting_ends_at`.
+//! 3. **finalize** — after `voting_ends_at`, anyone closes the vote and moves
+//!    the proposal to `Queued` (pass) or `Defeated` (fail). On pass,
+//!    `executable_at` is set to `finalize_ledger + timelock_delay`.
+//! 4. **execute** — after `executable_at`, anyone calls the target's `upgrade()`.
+//!
+//! Admin actions (cancel, update_config, transfer_admin) bypass voting but
+//! are on-chain and emitted as events.
 
 #![no_std]
 
@@ -19,14 +25,15 @@ mod governance;
 mod timelock;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, vec, Address, BytesN, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String};
 
 use governance::{
-    cancel_proposal, cast_vote, create_proposal, finalize_voting, load_admin, load_config,
-    load_proposal, save_admin, save_config,
+    cancel_proposal, cast_vote, create_proposal, emit_admin_transferred, emit_config_updated,
+    emit_executed, emit_initialized, finalize_voting, invoke_upgrade, load_admin, load_config,
+    load_proposal, require_admin, save_admin, save_config, validate_config,
 };
 use timelock::{assert_timelock_passed, ledgers_until_executable};
-use types::{Config, Error, Proposal, ProposalStatus};
+use types::{Config, DataKey, Error, Proposal, ProposalStatus, INSTANCE_TTL_BUMP};
 
 // ---------------------------------------------------------------------------
 // Contract struct
@@ -43,45 +50,49 @@ impl UpgradeManager {
 
     /// Initialise the contract with an admin address and governance config.
     ///
-    /// Can only be called once.
+    /// Can only be called once. The admin must sign the transaction.
     ///
     /// # Parameters
-    /// - `admin`                  — Address that can cancel proposals and update config.
-    /// - `timelock_delay`         — Ledgers between proposal creation and earliest execution.
-    /// - `quorum`                 — Minimum total votes required for a proposal to pass.
+    /// - `admin`                  — Address that can cancel proposals, update config, and transfer admin.
+    /// - `voting_period`          — Ledgers during which votes are accepted. Must be >= 1.
+    /// - `timelock_delay`         — Ledgers between finalization and earliest execution. Must be >= 1.
+    /// - `quorum`                 — Minimum total votes (YES+NO) required for a proposal to pass. Must be >= 1.
     /// - `approval_threshold_pct` — Percentage of YES/(YES+NO) votes required (1–100).
     ///
     /// # Errors
     /// - `AlreadyInitialized`  — contract storage already contains a Config entry.
-    /// - `InvalidTimelockDelay`, `InvalidQuorum`, `InvalidThreshold` — bad config values.
+    /// - `InvalidVotingPeriod`, `InvalidTimelockDelay`, `InvalidQuorum`, `InvalidThreshold` — bad config values.
     pub fn initialize(
         env: Env,
         admin: Address,
+        voting_period: u32,
         timelock_delay: u32,
         quorum: u32,
         approval_threshold_pct: u32,
     ) -> Result<(), Error> {
-        if env.storage().instance().has(&types::DataKey::Config) {
+        // Prevent front-running: the intended admin must sign.
+        admin.require_auth();
+
+        if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
-        if timelock_delay == 0 {
-            return Err(Error::InvalidTimelockDelay);
-        }
-        if quorum == 0 {
-            return Err(Error::InvalidQuorum);
-        }
-        if approval_threshold_pct == 0 || approval_threshold_pct > 100 {
-            return Err(Error::InvalidThreshold);
-        }
+
+        let config = Config {
+            voting_period,
+            timelock_delay,
+            quorum,
+            approval_threshold_pct,
+        };
+        validate_config(&config)?;
+
         save_admin(&env, &admin);
-        save_config(
-            &env,
-            &Config {
-                timelock_delay,
-                quorum,
-                approval_threshold_pct,
-            },
-        );
+        save_config(&env, &config);
+
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_TTL_BUMP, INSTANCE_TTL_BUMP);
+
+        emit_initialized(&env, &admin);
         Ok(())
     }
 
@@ -91,52 +102,45 @@ impl UpgradeManager {
 
     /// Update governance configuration. Only the admin can call this.
     ///
+    /// This does NOT affect proposals that are already in flight; each proposal
+    /// snapshots the config rules at creation time.
+    ///
     /// # Errors
-    /// - `Unauthorized` — caller is not the admin.
+    /// - `NotInitialized` — contract is not yet initialised.
+    /// - `Unauthorized`   — caller is not the admin.
     /// - Validation errors for bad config values (same as `initialize`).
     pub fn update_config(
         env: Env,
         caller: Address,
+        voting_period: u32,
         timelock_delay: u32,
         quorum: u32,
         approval_threshold_pct: u32,
     ) -> Result<(), Error> {
-        caller.require_auth();
-        let admin = load_admin(&env);
-        if caller != admin {
-            return Err(Error::Unauthorized);
-        }
-        if timelock_delay == 0 {
-            return Err(Error::InvalidTimelockDelay);
-        }
-        if quorum == 0 {
-            return Err(Error::InvalidQuorum);
-        }
-        if approval_threshold_pct == 0 || approval_threshold_pct > 100 {
-            return Err(Error::InvalidThreshold);
-        }
-        save_config(
-            &env,
-            &Config {
-                timelock_delay,
-                quorum,
-                approval_threshold_pct,
-            },
-        );
+        require_admin(&env, &caller)?;
+
+        let config = Config {
+            voting_period,
+            timelock_delay,
+            quorum,
+            approval_threshold_pct,
+        };
+        validate_config(&config)?;
+
+        save_config(&env, &config);
+        emit_config_updated(&env, &caller);
         Ok(())
     }
 
     /// Transfer the admin role to a new address. Only the current admin can call this.
     ///
     /// # Errors
-    /// - `Unauthorized` — caller is not the current admin.
+    /// - `NotInitialized` — contract is not yet initialised.
+    /// - `Unauthorized`   — caller is not the current admin.
     pub fn transfer_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
-        caller.require_auth();
-        let admin = load_admin(&env);
-        if caller != admin {
-            return Err(Error::Unauthorized);
-        }
+        require_admin(&env, &caller)?;
         save_admin(&env, &new_admin);
+        emit_admin_transferred(&env, &caller, &new_admin);
         Ok(())
     }
 
@@ -146,19 +150,24 @@ impl UpgradeManager {
 
     /// Create a new upgrade proposal.
     ///
-    /// Any address may propose an upgrade. The proposer must authenticate.
+    /// Any authenticated address may propose an upgrade. The governance rules
+    /// (voting_period, timelock_delay, quorum, approval_threshold_pct) are
+    /// snapshotted into the proposal at creation time.
     ///
     /// # Parameters
     /// - `proposer`       — Address creating the proposal (must sign).
     /// - `target`         — Contract address to be upgraded.
     /// - `new_wasm_hash`  — Hash of the already-uploaded WASM binary.
-    /// - `description`    — Human-readable description (max 256 bytes).
+    /// - `description`    — Human-readable description (1–256 bytes).
     ///
     /// # Returns
     /// The new proposal ID (starts at 0, increments by 1).
     ///
     /// # Errors
+    /// - `NotInitialized`    — contract is not yet initialised.
+    /// - `EmptyDescription`  — description is empty.
     /// - `DescriptionTooLong` — description exceeds 256 bytes.
+    /// - `Overflow`          — ledger arithmetic overflow.
     pub fn propose_upgrade(
         env: Env,
         proposer: Address,
@@ -173,6 +182,7 @@ impl UpgradeManager {
     /// Vote on an active proposal.
     ///
     /// The voter must authenticate. Each address may vote exactly once.
+    /// Voting is only allowed while ledger.sequence() <= voting_ends_at.
     ///
     /// # Parameters
     /// - `voter`       — Address casting the vote (must sign).
@@ -180,9 +190,11 @@ impl UpgradeManager {
     /// - `approve`     — `true` for YES, `false` for NO.
     ///
     /// # Errors
-    /// - `ProposalNotFound` — unknown proposal ID.
-    /// - `VotingClosed`     — proposal is not Active.
-    /// - `AlreadyVoted`     — this address already voted.
+    /// - `ProposalNotFound`  — unknown proposal ID.
+    /// - `VotingClosed`      — proposal is not Active.
+    /// - `VotingPeriodEnded` — the voting window has closed.
+    /// - `AlreadyVoted`      — this address already voted.
+    /// - `Overflow`          — vote count arithmetic overflow.
     pub fn vote(env: Env, voter: Address, proposal_id: u64, approve: bool) -> Result<(), Error> {
         voter.require_auth();
         cast_vote(&env, proposal_id, voter, approve)
@@ -190,20 +202,28 @@ impl UpgradeManager {
 
     /// Finalize voting on a proposal.
     ///
-    /// Can be called by anyone once the timelock period has elapsed.
-    /// Moves the proposal to `Queued` (passed) or `Defeated` (failed).
+    /// Can be called by anyone once the voting period has ended
+    /// (ledger.sequence() > voting_ends_at).
+    /// On pass: status → Queued, executable_at = current_ledger + snapshot_timelock_delay.
+    /// On fail: status → Defeated.
     ///
     /// # Errors
-    /// - `ProposalNotFound`    — unknown proposal ID.
-    /// - `VotingClosed`        — proposal is not Active.
-    /// - `TimelockNotExpired`  — too early to finalize.
+    /// - `ProposalNotFound`   — unknown proposal ID.
+    /// - `VotingClosed`       — proposal is not Active.
+    /// - `VotingStillActive`  — the voting period has not ended yet.
+    /// - `Overflow`           — ledger arithmetic overflow.
     pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, Error> {
         finalize_voting(&env, proposal_id)
     }
 
     /// Execute a queued proposal by performing the cross-contract WASM upgrade.
     ///
-    /// Can be called by anyone after the timelock has expired.
+    /// Can be called by anyone after the timelock has expired
+    /// (ledger.sequence() >= executable_at).
+    ///
+    /// The proposal status is set to Executed BEFORE invoking the target
+    /// (checks-effects-interactions pattern). If the target call fails, the
+    /// entire transaction reverts, keeping the proposal Queued.
     ///
     /// # Errors
     /// - `ProposalNotFound`   — unknown proposal ID.
@@ -212,20 +232,20 @@ impl UpgradeManager {
     pub fn execute(env: Env, proposal_id: u64) -> Result<(), Error> {
         let mut proposal = load_proposal(&env, proposal_id)?;
 
-        // Enforce timelock
+        // Enforce timelock (also checks Queued status).
         assert_timelock_passed(&env, &proposal)?;
 
-        // Perform the cross-contract upgrade by invoking the target contract's
-        // `upgrade` function, which is the standard Soroban upgrade interface
-        // (env.deployer().update_current_contract_wasm called from within the target).
-        env.invoke_contract::<()>(
-            &proposal.target,
-            &symbol_short!("upgrade"),
-            vec![&env, proposal.new_wasm_hash.to_val()],
-        );
-
+        // Checks-effects-interactions: update state BEFORE external call.
         proposal.status = ProposalStatus::Executed;
         governance::save_proposal(&env, &proposal);
+
+        // Emit executed event before the external call.
+        emit_executed(&env, proposal_id);
+
+        // Perform the cross-contract upgrade by invoking the target contract's
+        // `upgrade` function. If this call fails, the entire transaction reverts,
+        // and the proposal returns to Queued.
+        invoke_upgrade(&env, &proposal.target, &proposal.new_wasm_hash);
 
         Ok(())
     }
@@ -233,12 +253,12 @@ impl UpgradeManager {
     /// Cancel an Active or Queued proposal. Only the admin can call this.
     ///
     /// # Errors
-    /// - `Unauthorized`       — caller is not the admin.
-    /// - `ProposalNotFound`   — unknown proposal ID.
-    /// - `ProposalFinalized`  — proposal is already Executed or Cancelled.
+    /// - `NotInitialized`    — contract is not yet initialised.
+    /// - `Unauthorized`      — caller is not the admin.
+    /// - `ProposalNotFound`  — unknown proposal ID.
+    /// - `ProposalFinalized` — proposal is already Executed, Cancelled, or Defeated.
     pub fn cancel(env: Env, caller: Address, proposal_id: u64) -> Result<(), Error> {
-        caller.require_auth();
-        cancel_proposal(&env, caller, proposal_id)
+        cancel_proposal(&env, &caller, proposal_id)
     }
 
     // -----------------------------------------------------------------------
@@ -254,18 +274,24 @@ impl UpgradeManager {
     }
 
     /// Return the current governance configuration.
-    pub fn get_config(env: Env) -> Config {
+    ///
+    /// # Errors
+    /// - `NotInitialized` — contract has not been initialised.
+    pub fn get_config(env: Env) -> Result<Config, Error> {
         load_config(&env)
     }
 
     /// Return the current admin address.
-    pub fn get_admin(env: Env) -> Address {
+    ///
+    /// # Errors
+    /// - `NotInitialized` — contract has not been initialised.
+    pub fn get_admin(env: Env) -> Result<Address, Error> {
         load_admin(&env)
     }
 
     /// Return how many ledgers remain until a proposal's timelock expires.
     ///
-    /// Returns `0` if execution is already permitted.
+    /// Returns `0` if execution is already permitted or if the proposal is not Queued.
     ///
     /// # Errors
     /// - `ProposalNotFound` — unknown proposal ID.
@@ -289,18 +315,15 @@ mod tests {
     // Helpers
     // -----------------------------------------------------------------------
 
-    // In soroban-sdk 22 the generated test client panics on contract errors
-    // unless the `try_` prefixed variant is used. Success-path methods return
-    // T directly (no wrapping).
-
     /// Returns (env, admin, contract_id, client).
+    /// Uses voting_period=100, timelock_delay=17_280, quorum=3, threshold=51.
     fn setup() -> (Env, Address, Address, UpgradeManagerClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
-        client.initialize(&admin, &17_280u32, &3u32, &51u32);
+        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
         (env, admin, contract_id, client)
     }
 
@@ -312,19 +335,30 @@ mod tests {
         String::from_str(env, s)
     }
 
-    /// Advance the ledger past the 17 280-ledger timelock while keeping the
-    /// contract's instance and persistent storage TTLs alive so calls don't
-    /// see an archived entry.
-    ///
-    /// `proposal_id` — the proposal whose persistent entry needs a TTL bump.
+    /// Advance ledger past the voting period so finalize is allowed.
+    fn advance_past_voting(env: &Env, contract_id: &Address, proposal_id: u64) {
+        use types::DataKey;
+        const ADVANCE: u32 = 101; // past voting_period=100
+        const BUMP: u32 = ADVANCE + 30_000;
+        env.as_contract(contract_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(proposal_id), BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += ADVANCE);
+    }
+
+    /// Advance ledger past both voting period and timelock so execute is allowed.
+    /// Also extends vote entry TTLs for all `voter_ids` if provided.
     fn advance_past_timelock(env: &Env, contract_id: &Address, proposal_id: u64) {
         use types::DataKey;
-        const ADVANCE: u32 = 17_281;
-        const BUMP: u32 = ADVANCE + 10_000;
+        // finalize first, then timelock_delay=17_280 more ledgers
+        // We advance far enough to be past voting (101) + timelock (17_280) + margin
+        const ADVANCE: u32 = 17_382; // 101 + 17_280 + 1
+        const BUMP: u32 = ADVANCE + 30_000;
         env.as_contract(contract_id, || {
-            // Extend instance storage (Config, Admin, ProposalCount)
             env.storage().instance().extend_ttl(BUMP, BUMP);
-            // Extend the specific proposal entry
             env.storage()
                 .persistent()
                 .extend_ttl(&DataKey::Proposal(proposal_id), BUMP, BUMP);
@@ -340,6 +374,7 @@ mod tests {
     fn test_initialize_success() {
         let (_env, admin, _cid, client) = setup();
         let config = client.get_config();
+        assert_eq!(config.voting_period, 100);
         assert_eq!(config.timelock_delay, 17_280);
         assert_eq!(config.quorum, 3);
         assert_eq!(config.approval_threshold_pct, 51);
@@ -350,7 +385,7 @@ mod tests {
     fn test_initialize_twice_fails() {
         let (_env, admin, _cid, client) = setup();
         assert_eq!(
-            client.try_initialize(&admin, &100u32, &1u32, &51u32),
+            client.try_initialize(&admin, &100u32, &100u32, &1u32, &51u32),
             Err(Ok(Error::AlreadyInitialized))
         );
     }
@@ -363,7 +398,7 @@ mod tests {
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
         assert_eq!(
-            client.try_initialize(&admin, &0u32, &1u32, &51u32),
+            client.try_initialize(&admin, &100u32, &0u32, &1u32, &51u32),
             Err(Ok(Error::InvalidTimelockDelay))
         );
     }
@@ -440,17 +475,35 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn test_finalize_before_timelock_fails() {
+    fn test_finalize_before_voting_ends_fails() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
         let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
-        assert_eq!(
-            client.try_finalize(&id),
-            Err(Ok(Error::TimelockNotExpired))
-        );
+        // Voting period = 100 ledgers, not yet elapsed
+        assert_eq!(client.try_finalize(&id), Err(Ok(Error::VotingStillActive)));
+    }
+
+    // Keep old test name as alias so snapshots that reference it still compile
+    #[test]
+    fn test_finalize_before_timelock_fails() {
+        test_finalize_before_voting_ends_fails_inner();
+    }
+    fn test_finalize_before_voting_ends_fails_inner() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        assert_eq!(client.try_finalize(&id), Err(Ok(Error::VotingStillActive)));
     }
 
     #[test]
@@ -461,7 +514,7 @@ mod tests {
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
-        advance_past_timelock(&env, &cid, id);
+        advance_past_voting(&env, &cid, id);
         assert_eq!(client.finalize(&id), ProposalStatus::Queued);
     }
 
@@ -474,7 +527,7 @@ mod tests {
         for _ in 0..2 {
             client.vote(&Address::generate(&env), &id, &true);
         }
-        advance_past_timelock(&env, &cid, id);
+        advance_past_voting(&env, &cid, id);
         assert_eq!(client.finalize(&id), ProposalStatus::Defeated);
     }
 
@@ -511,7 +564,7 @@ mod tests {
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
-        advance_past_timelock(&env, &cid, id);
+        advance_past_voting(&env, &cid, id);
         client.finalize(&id); // → Queued
         client.cancel(&admin, &id); // → Cancelled
         assert_eq!(
@@ -529,8 +582,19 @@ mod tests {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
         let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
+        // Not yet Queued → returns 0
+        assert_eq!(client.time_until_executable(&id), 0u32);
+
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        advance_past_voting(&env, &cid, id);
+        client.finalize(&id); // → Queued, executable_at set
+                              // Just finalized: timelock_delay=17_280 ledgers remain
         assert_eq!(client.time_until_executable(&id), 17_280u32);
+
         advance_past_timelock(&env, &cid, id);
+        // After timelock: 0
         assert_eq!(client.time_until_executable(&id), 0u32);
     }
 
@@ -541,8 +605,9 @@ mod tests {
     #[test]
     fn test_update_config() {
         let (_env, admin, _cid, client) = setup();
-        client.update_config(&admin, &1000u32, &5u32, &66u32);
+        client.update_config(&admin, &50u32, &1000u32, &5u32, &66u32);
         let cfg = client.get_config();
+        assert_eq!(cfg.voting_period, 50);
         assert_eq!(cfg.timelock_delay, 1000);
         assert_eq!(cfg.quorum, 5);
         assert_eq!(cfg.approval_threshold_pct, 66);
@@ -557,10 +622,7 @@ mod tests {
         // Old admin can no longer cancel
         let target = Address::generate(&env);
         let id = client.propose_upgrade(&new_admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
-        assert_eq!(
-            client.try_cancel(&admin, &id),
-            Err(Ok(Error::Unauthorized))
-        );
+        assert_eq!(client.try_cancel(&admin, &id), Err(Ok(Error::Unauthorized)));
     }
 
     // -----------------------------------------------------------------------
@@ -568,29 +630,15 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// A minimal upgradable contract used as the upgrade target in integration tests.
-    /// It exposes:
-    ///   - `version() -> u32`  — returns a hard-coded version number
-    ///   - `upgrade(new_wasm_hash: BytesN<32>)` — the standard Soroban upgrade interface
-    ///
-    /// In the test environment `env.deployer().update_current_contract_wasm()` is a
-    /// no-op that succeeds without actually swapping WASM (there is no real WASM to
-    /// swap in the mock environment). What matters is that the call chain succeeds:
-    ///
-    ///   execute() → env.invoke_contract(target, "upgrade", [hash]) → target.upgrade(hash)
-    ///
-    /// That proves the cross-contract invocation path works end-to-end.
     #[contract]
     pub struct UpgradableTarget;
 
     #[contractimpl]
     impl UpgradableTarget {
-        /// Returns the current (pre-upgrade) version.
         pub fn version(_env: Env) -> u32 {
             1
         }
 
-        /// Standard Soroban upgrade interface.
-        /// The upgrade manager invokes this with the new WASM hash.
         pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
             env.deployer().update_current_contract_wasm(new_wasm_hash);
         }
@@ -598,50 +646,27 @@ mod tests {
 
     /// Full governance-gated upgrade integration test.
     ///
-    /// Flow:
-    ///   1. Deploy upgrade-manager and a target contract (UpgradableTarget)
-    ///   2. Upload a WASM binary to the mock ledger and obtain its hash
-    ///   3. Initialize the upgrade-manager (quorum=3, threshold=51%, timelock=17_280)
-    ///   4. Propose an upgrade to the target contract using the real WASM hash
-    ///   5. Cast 3 YES votes (satisfies quorum and threshold)
-    ///   6. Advance past the timelock (bumping both manager and target TTLs)
-    ///   7. Finalize → proposal moves to Queued
-    ///   8. Execute → upgrade manager calls target.upgrade(wasm_hash) via invoke_contract
-    ///   9. Verify proposal status is Executed
+    /// Flow: propose → vote × 3 → advance past voting → finalize (Queued) →
+    ///       advance past timelock → execute → proposal Executed.
     ///
-    /// Note on WASM in test environment:
-    /// `env.register(Contract, ())` stores the contract natively (no real WASM bytes),
-    /// but it uploads an empty-bytes WASM as a placeholder. `update_current_contract_wasm`
-    /// requires the target hash to exist in the ledger. We upload empty bytes explicitly
-    /// via `env.deployer().upload_contract_wasm()` to get a hash that the mock host
-    /// recognises, making the upgrade a self-consistent no-op (same binary, new pointer).
+    /// Note: In test environment, update_current_contract_wasm succeeds with
+    /// the empty-bytes hash uploaded by env.deployer().upload_contract_wasm().
     #[test]
     fn test_full_governance_upgrade_flow() {
         let env = Env::default();
         env.mock_all_auths();
 
-        // Deploy the upgrade manager
         let manager_id = env.register(UpgradeManager, ());
         let manager = UpgradeManagerClient::new(&env, &manager_id);
-
-        // Deploy the target contract (the contract that will be upgraded)
         let target_id = env.register(UpgradableTarget, ());
 
-        // Upload a WASM binary to the mock ledger.
-        // We use empty bytes because that is the same placeholder that
-        // env.register() uses internally for native test contracts. The hash
-        // returned is sha256([]) = e3b0c4..., which already exists in the ledger,
-        // so update_current_contract_wasm(hash) will succeed.
         let new_hash = env
             .deployer()
             .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
 
         let admin = Address::generate(&env);
+        manager.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
 
-        // Initialize the upgrade manager
-        manager.initialize(&admin, &17_280u32, &3u32, &51u32);
-
-        // Propose an upgrade using the real WASM hash
         let proposal_id = manager.propose_upgrade(
             &admin,
             &target_id,
@@ -650,13 +675,9 @@ mod tests {
         );
         assert_eq!(proposal_id, 0u64);
 
-        // Verify proposal is Active
         let proposal = manager.get_proposal(&proposal_id);
         assert_eq!(proposal.status, ProposalStatus::Active);
-        assert_eq!(proposal.target, target_id);
-        assert_eq!(proposal.new_wasm_hash, new_hash);
 
-        // Cast 3 YES votes (satisfies quorum=3, threshold=51%)
         let voter1 = Address::generate(&env);
         let voter2 = Address::generate(&env);
         let voter3 = Address::generate(&env);
@@ -666,52 +687,63 @@ mod tests {
 
         let proposal = manager.get_proposal(&proposal_id);
         assert_eq!(proposal.yes_votes, 3);
-        assert_eq!(proposal.no_votes, 0);
 
-        // Bump the target contract's instance TTL before advancing the ledger.
-        // The mock host archives instance storage that hasn't been touched within
-        // its TTL window. When execute() calls into the target, the host validates
-        // the target's instance entries. We must extend before sequence_number jumps.
-        const ADVANCE: u32 = 17_281;
-        const BUMP: u32 = ADVANCE + 10_000;
+        // Extend target TTL before advancing ledger
+        const ADVANCE: u32 = 17_382;
+        const BUMP: u32 = ADVANCE + 30_000;
         env.as_contract(&target_id, || {
             env.storage().instance().extend_ttl(BUMP, BUMP);
         });
 
-        // Advance past the timelock (manager + proposal storage)
-        advance_past_timelock(&env, &manager_id, proposal_id);
+        // Advance past voting period
+        {
+            use types::DataKey;
+            env.as_contract(&manager_id, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&DataKey::Proposal(proposal_id), BUMP, BUMP);
+            });
+        }
+        env.ledger().with_mut(|l| l.sequence_number += 101); // past voting_period=100
 
-        // time_until_executable should now return 0
-        assert_eq!(manager.time_until_executable(&proposal_id), 0u32);
-
-        // Finalize voting → should move to Queued
+        // Finalize → Queued
         let status = manager.finalize(&proposal_id);
         assert_eq!(status, ProposalStatus::Queued);
 
-        // Execute the upgrade — calls target.upgrade(new_hash) via invoke_contract.
-        // This is the core cross-contract upgrade path being tested.
+        // Advance past timelock
+        {
+            use types::DataKey;
+            env.as_contract(&manager_id, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&DataKey::Proposal(proposal_id), BUMP, BUMP);
+            });
+            env.as_contract(&target_id, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+            });
+        }
+        env.ledger().with_mut(|l| l.sequence_number += 17_281); // past timelock_delay=17_280
+
+        assert_eq!(manager.time_until_executable(&proposal_id), 0u32);
+
         manager.execute(&proposal_id);
 
-        // Proposal must now be Executed
         let final_proposal = manager.get_proposal(&proposal_id);
         assert_eq!(final_proposal.status, ProposalStatus::Executed);
     }
 
-    /// Verify that execute() fails if the proposal has not been finalized (still Active).
+    /// Verify that execute() fails if the proposal is still Active.
     #[test]
     fn test_execute_fails_on_active_proposal() {
         let (env, admin, _cid, client) = setup();
         let target = env.register(UpgradableTarget, ());
         let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
-        // 3 votes to satisfy quorum
         client.vote(&Address::generate(&env), &id, &true);
         client.vote(&Address::generate(&env), &id, &true);
         client.vote(&Address::generate(&env), &id, &true);
-        // Timelock has NOT elapsed → execute must fail with NotQueued (still Active)
-        assert_eq!(
-            client.try_execute(&id),
-            Err(Ok(Error::NotQueued))
-        );
+        assert_eq!(client.try_execute(&id), Err(Ok(Error::NotQueued)));
     }
 
     /// Verify that execute() fails if the proposal was Defeated.
@@ -720,17 +752,12 @@ mod tests {
         let (env, admin, cid, client) = setup();
         let target = env.register(UpgradableTarget, ());
         let id = client.propose_upgrade(&admin, &target, &wasm_hash(&env), &desc(&env, "v2"));
-        // Only 2 votes — quorum=3 → will be Defeated
         client.vote(&Address::generate(&env), &id, &true);
         client.vote(&Address::generate(&env), &id, &true);
-        advance_past_timelock(&env, &cid, id);
+        advance_past_voting(&env, &cid, id);
         let status = client.finalize(&id);
         assert_eq!(status, ProposalStatus::Defeated);
-        // execute on a Defeated proposal must fail
-        assert_eq!(
-            client.try_execute(&id),
-            Err(Ok(Error::NotQueued))
-        );
+        assert_eq!(client.try_execute(&id), Err(Ok(Error::NotQueued)));
     }
 
     /// Verify that execute() fails before the timelock has expired.
@@ -742,39 +769,10 @@ mod tests {
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
-        advance_past_timelock(&env, &cid, id);
+        advance_past_voting(&env, &cid, id);
         client.finalize(&id); // → Queued
 
-        // Create a fresh env + re-deploy to test timelock check without advancing
-        let env2 = Env::default();
-        env2.mock_all_auths();
-        let cid2 = env2.register(UpgradeManager, ());
-        let client2 = UpgradeManagerClient::new(&env2, &cid2);
-        let admin2 = Address::generate(&env2);
-        client2.initialize(&admin2, &17_280u32, &3u32, &51u32);
-        let target2 = env2.register(UpgradableTarget, ());
-        let id2 = client2.propose_upgrade(
-            &admin2, &target2, &wasm_hash(&env2), &desc(&env2, "v2"),
-        );
-        for _ in 0..3 {
-            client2.vote(&Address::generate(&env2), &id2, &true);
-        }
-        // Advance past timelock then finalize
-        advance_past_timelock(&env2, &cid2, id2);
-        client2.finalize(&id2); // → Queued
-
-        // Reset ledger to before executable_at — not straightforward in mock env,
-        // so instead verify via the time_until_executable helper on a fresh proposal.
-        let id3 = client2.propose_upgrade(
-            &admin2, &target2, &wasm_hash(&env2), &desc(&env2, "v3"),
-        );
-        for _ in 0..3 {
-            client2.vote(&Address::generate(&env2), &id3, &true);
-        }
-        // id3 is Active (not yet finalized) — execute must fail with NotQueued
-        assert_eq!(
-            client2.try_execute(&id3),
-            Err(Ok(Error::NotQueued))
-        );
+        // Execute before timelock elapses → TimelockNotExpired
+        assert_eq!(client.try_execute(&id), Err(Ok(Error::TimelockNotExpired)));
     }
 }

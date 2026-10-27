@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test
+    name: Build, Test, Lint
     runs-on: ubuntu-latest
 
     steps:
@@ -19,6 +19,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -31,6 +32,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
       - name: Build (native)
         run: cargo build --workspace
 
@@ -39,3 +46,18 @@ jobs:
 
       - name: Build (wasm)
         run: cargo build --target wasm32-unknown-unknown --release --manifest-path contracts/upgrade-manager/Cargo.toml
+
+      - name: Verify claims audit
+        run: bash scripts/check_claims.sh
+
+      - name: Rebuild fixtures and verify drift
+        run: |
+          bash scripts/build_fixtures.sh
+          cd contracts/upgrade-manager/tests/fixtures
+          if ! git diff --quiet -- target_v1.wasm target_v2.wasm SHA256SUMS; then
+            echo "ERROR: Committed fixtures differ from rebuilt fixtures."
+            echo "Run 'bash scripts/build_fixtures.sh' and commit the result."
+            git diff -- target_v1.wasm target_v2.wasm SHA256SUMS
+            exit 1
+          fi
+

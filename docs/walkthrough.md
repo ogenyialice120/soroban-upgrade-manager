@@ -1,8 +1,9 @@
 # Walkthrough: Governance-Gated WASM Upgrade on Testnet
 
 This guide walks through the complete lifecycle of a governed contract upgrade using
-`soroban-upgrade-manager` on Stellar Testnet. It covers every step from uploading
-the new WASM binary through proposal creation, voting, timelock expiry, and execution.
+`soroban-upgrade-manager` on Stellar Testnet. It covers every step from deploying the
+example-target contract through proposal creation, voting, finalization, timelock
+expiry, and execution.
 
 ---
 
@@ -19,18 +20,41 @@ the new WASM binary through proposal creation, voting, timelock expiry, and exec
 
 ## Overview
 
+The upgrade manager governs upgrades to a **target** contract. In this walkthrough
+the target is the bundled `example-target` contract — a minimal contract with a
+`version()` function and an `upgrade(new_wasm_hash)` function that authenticates the
+upgrade manager before replacing its WASM.
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  1. Upload new WASM to Stellar network                          │
-│  2. Deploy upgrade-manager contract                             │
-│  3. Deploy the target contract (the one to be upgraded)         │
-│  4. Initialize upgrade-manager (admin, timelock, quorum)        │
-│  5. propose_upgrade() — create a governance proposal            │
-│  6. vote() × N — token holders cast YES/NO votes               │
-│  7. finalize() — close voting after timelock elapses           │
-│  8. execute() — run the cross-contract upgrade                  │
-└─────────────────────────────────────────────────────────────────┘
+1. Build and upload the new (v2) target WASM → get hash
+2. Deploy the upgrade-manager contract
+3. Deploy example-target (constructor stores the manager address)
+4. Initialize upgrade-manager (admin, voting_period, timelock_delay, quorum, threshold)
+5. propose_upgrade() — create a governance proposal (Active)
+6. vote() × N — any address casts one YES/NO vote during the voting period
+7. finalize() — after the voting period ends; moves to Queued (pass) or Defeated (fail)
+8. Wait for the timelock delay to elapse (starts at finalize time)
+9. execute() — anyone calls; manager invokes target.upgrade(new_wasm_hash)
 ```
+
+### Two distinct time windows
+
+```
+ propose_upgrade          voting_ends_at              executable_at
+     │                         │                            │
+     ▼                         ▼                            ▼
+  [Active] ── voting_period ──► finalize() ── timelock_delay ──► execute()
+                                 │
+                    pass? ──► [Queued] ── wait ──► execute() ──► [Executed]
+                    fail? ──► [Defeated]
+```
+
+- **Voting period** (`voting_period`): ledgers between proposal creation and the
+  end of voting. Votes are accepted while `ledger.sequence() <= voting_ends_at`.
+- **Timelock delay** (`timelock_delay`): ledgers between finalization and earliest
+  execution. `executable_at` is set to `finalize_ledger + timelock_delay` when
+  `finalize()` is called. The timelock starts when someone calls `finalize()`, not
+  when the proposal is created.
 
 ---
 
@@ -66,26 +90,27 @@ echo "Voter3: $VOTER3"
 
 ---
 
-## Step 1: Build and Upload the New WASM
+## Step 1: Build and Upload the New (v2) Target WASM
 
 Before proposing an upgrade, the new WASM binary must be uploaded to the
 Stellar network. This produces a 32-byte hash that the proposal references.
 
 ```bash
-# Build the upgrade-manager (or your target contract)
+# Build the v2 target WASM (example-target with --features v2)
 cargo build --target wasm32-unknown-unknown --release \
-  --manifest-path contracts/upgrade-manager/Cargo.toml
+  --manifest-path contracts/example-target/Cargo.toml \
+  --features v2
 
-WASM_PATH="target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm"
+V2_WASM_PATH="target/wasm32-unknown-unknown/release/example_target.wasm"
 
 # Upload the WASM to the network — this does NOT deploy a contract.
 # It registers the binary and returns the hash.
 NEW_WASM_HASH=$(stellar contract upload \
-  --wasm "$WASM_PATH" \
+  --wasm "$V2_WASM_PATH" \
   --source admin \
   --network testnet)
 
-echo "Uploaded WASM hash: $NEW_WASM_HASH"
+echo "Uploaded v2 WASM hash: $NEW_WASM_HASH"
 ```
 
 > The WASM hash is a content-addressed key: the same binary always produces the
@@ -93,9 +118,13 @@ echo "Uploaded WASM hash: $NEW_WASM_HASH"
 
 ---
 
-## Step 2: Deploy the Upgrade Manager
+## Step 2: Build and Deploy the Upgrade Manager
 
 ```bash
+# Build the upgrade-manager WASM
+cargo build --target wasm32-unknown-unknown --release \
+  --manifest-path contracts/upgrade-manager/Cargo.toml
+
 MANAGER_WASM="target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm"
 
 MANAGER_ID=$(stellar contract deploy \
@@ -108,19 +137,45 @@ echo "Upgrade Manager contract ID: $MANAGER_ID"
 
 ---
 
-## Step 3: Deploy the Target Contract
+## Step 3: Deploy the Target Contract (example-target)
 
-For this walkthrough, we deploy a second instance of the upgrade-manager as the
-"target" contract to be upgraded. In production this would be your actual application
-contract.
+The target contract is the contract you want to upgrade. In this walkthrough we
+use the bundled `example-target` contract, which has:
+
+- `__constructor(manager)` — stores the upgrade-manager address at deploy time.
+- `version()` — returns 1 (or 2 when built with `--features v2`).
+- `upgrade(new_wasm_hash)` — authenticates the stored manager, then calls
+  `env.deployer().update_current_contract_wasm(new_wasm_hash)`.
+- `get_manager()` — returns the stored manager address.
 
 ```bash
+# Build the v1 target WASM (no features)
+cargo build --target wasm32-unknown-unknown --release \
+  --manifest-path contracts/example-target/Cargo.toml
+
+TARGET_WASM="target/wasm32-unknown-unknown/release/example_target.wasm"
+
+# Deploy example-target, passing the manager address to the constructor.
+# The constructor calls manager.require_auth(), so the admin key that controls
+# the manager must sign this transaction.
 TARGET_ID=$(stellar contract deploy \
-  --wasm "$MANAGER_WASM" \
+  --wasm "$TARGET_WASM" \
   --source admin \
-  --network testnet)
+  --network testnet \
+  -- \
+  --manager "$MANAGER_ID")
 
 echo "Target contract ID: $TARGET_ID"
+```
+
+Verify the target is running v1:
+
+```bash
+stellar contract invoke \
+  --id "$TARGET_ID" \
+  --network testnet \
+  -- version
+# Expected: 1
 ```
 
 > **Storage layout note:** If you are upgrading a production contract, the new WASM
@@ -139,17 +194,24 @@ stellar contract invoke \
   --network testnet \
   -- initialize \
   --admin "$ADMIN_ADDR" \
+  --voting_period 17280 \
   --timelock_delay 17280 \
   --quorum 3 \
   --approval_threshold_pct 51
 ```
 
-Configuration used here:
+Configuration used in this walkthrough:
+
 | Parameter | Value | Meaning |
 |---|---|---|
-| `timelock_delay` | `17280` | ≈ 24 hours at 5 s/ledger |
-| `quorum` | `3` | At least 3 total votes required |
-| `approval_threshold_pct` | `51` | Simple majority (>51% YES) |
+| `voting_period` | `17280` | ≈ 24 hours at 5 s/ledger — ledgers during which votes are accepted |
+| `timelock_delay` | `17280` | ≈ 24 hours — ledgers between `finalize()` and earliest `execute()` |
+| `quorum` | `3` | At least 3 total votes (YES + NO) required for the proposal to pass |
+| `approval_threshold_pct` | `51` | At least 51% of total votes must be YES |
+
+All parameters must be >= 1 (`approval_threshold_pct` must be 1–100).
+The `initialize` function can only be called once; the admin must sign the
+transaction.
 
 ---
 
@@ -164,14 +226,15 @@ PROPOSAL_ID=$(stellar contract invoke \
   --proposer "$ADMIN_ADDR" \
   --target "$TARGET_ID" \
   --new_wasm_hash "$NEW_WASM_HASH" \
-  --description "Upgrade target to v2: add governance config validation")
+  --description "Upgrade example-target from v1 to v2")
 
 echo "Proposal ID: $PROPOSAL_ID"
 # Expected: 0
 ```
 
-At this point the proposal is in **Active** status. Voters have until
-`executable_at` ledger (created_at + 17280) to cast their votes.
+At this point the proposal is in **Active** status. The voting period ends at
+`voting_ends_at` = `created_at + voting_period` (in ledgers). Anyone can vote
+while `ledger.sequence() <= voting_ends_at`.
 
 Verify the proposal:
 
@@ -187,7 +250,8 @@ stellar contract invoke \
 
 ## Step 6: Vote
 
-Each voter can vote YES (`true`) or NO (`false`) exactly once.
+Each address can vote YES (`true`) or NO (`false`) exactly once per proposal.
+There is no token-weighted voting — every address gets one equal vote.
 
 ```bash
 # Voter 1 votes YES
@@ -232,6 +296,45 @@ stellar contract invoke \
 # yes_votes: 3, no_votes: 0, status: Active
 ```
 
+---
+
+## Step 7: Finalize Voting
+
+After the **voting period** has ended (`ledger.sequence() > voting_ends_at`),
+anyone can call `finalize` to close voting and determine the outcome.
+
+The proposal passes if:
+1. Total votes (YES + NO) >= `quorum` (3 in this walkthrough), AND
+2. YES votes as a percentage of total votes >= `approval_threshold_pct` (51%).
+
+On pass, the proposal moves to **Queued** and `executable_at` is set to
+`current_ledger + timelock_delay`. On fail, it moves to **Defeated**.
+
+```bash
+# Wait for the voting period to elapse (~24 hours), then:
+stellar contract invoke \
+  --id "$MANAGER_ID" \
+  --network testnet \
+  -- finalize \
+  --proposal_id 0
+# Expected result: "Queued"
+```
+
+> `finalize` does not require authentication — anyone can call it. It only
+> succeeds if the voting period has ended. If called too early, it returns
+> `VotingStillActive`.
+
+If the proposal is **Defeated** (quorum not met or threshold not reached), the
+upgrade will not be executed. You can create a new proposal after investigating why.
+
+---
+
+## Step 8: Wait for the Timelock
+
+Once the proposal is **Queued**, the timelock delay begins counting down from
+the ledger at which `finalize()` was called. Anyone can call `execute()` once
+`ledger.sequence() >= executable_at`.
+
 Check how many ledgers remain until execution:
 
 ```bash
@@ -240,46 +343,32 @@ stellar contract invoke \
   --network testnet \
   -- time_until_executable \
   --proposal_id 0
-# Returns remaining ledgers (starts at 17280, counts down to 0)
+# Returns remaining ledgers (0 means execution is permitted)
 ```
+
+> `time_until_executable` returns 0 for proposals that are not Queued, or when
+> the timelock has already expired.
 
 ---
 
-## Step 7: Finalize Voting
+## Step 9: Execute the Upgrade
 
-After the timelock delay has elapsed (~24 hours), call `finalize` to close voting
-and move the proposal to **Queued** (if quorum and threshold are met) or **Defeated**.
-
-```bash
-# Wait until time_until_executable returns 0, then:
-stellar contract invoke \
-  --id "$MANAGER_ID" \
-  --source admin \
-  --network testnet \
-  -- finalize \
-  --proposal_id 0
-# Expected result: "Queued"
-```
-
-If the proposal is **Defeated** (quorum not met or threshold not reached), the
-upgrade will not be executed. You can create a new proposal after investigating why.
-
----
-
-## Step 8: Execute the Upgrade
-
-Once finalized as **Queued**, anyone can call `execute`. The upgrade manager calls
-the target contract's `upgrade()` function with the new WASM hash, which internally
-calls `env.deployer().update_current_contract_wasm()`.
+Once the timelock has expired, anyone can call `execute`. The upgrade manager
+calls the target contract's `upgrade()` function via cross-contract invocation,
+passing the new WASM hash. The target contract authenticates that the call comes
+from the stored manager address, then calls
+`env.deployer().update_current_contract_wasm(new_wasm_hash)`.
 
 ```bash
 stellar contract invoke \
   --id "$MANAGER_ID" \
-  --source admin \
   --network testnet \
   -- execute \
   --proposal_id 0
 ```
+
+> `execute` does not require authentication — anyone can call it. It only
+> succeeds if the proposal is Queued and the timelock has expired.
 
 After this transaction confirms, the target contract's WASM is replaced with the
 new version. Verify:
@@ -292,14 +381,21 @@ stellar contract invoke \
   -- get_proposal \
   --proposal_id 0
 # status: Executed
+
+# Verify the target now runs v2
+stellar contract invoke \
+  --id "$TARGET_ID" \
+  --network testnet \
+  -- version
+# Expected: 2
 ```
 
 ---
 
 ## Emergency Cancel
 
-If a proposal needs to be stopped (before or after voting, before execution), the
-admin can cancel it:
+If a proposal needs to be stopped, the admin can cancel any **Active** or
+**Queued** proposal:
 
 ```bash
 stellar contract invoke \
@@ -311,28 +407,30 @@ stellar contract invoke \
   --proposal_id 0
 ```
 
-Only `Active` and `Queued` proposals can be cancelled. `Executed` and `Cancelled`
-proposals are immutable.
+Only Active and Queued proposals can be cancelled. Cancelling a Defeated,
+Executed, or already-Cancelled proposal returns `ProposalFinalized`.
 
 ---
 
 ## Full Timeline
 
 ```
-Day 0  │  Upload WASM → get hash
-       │  Deploy upgrade-manager + target contract
-       │  Initialize upgrade-manager
+Day 0  │  Upload v2 WASM → get hash
+       │  Deploy upgrade-manager + example-target
+       │  Initialize upgrade-manager (voting_period=17280, timelock_delay=17280)
        │  propose_upgrade() → Proposal #0 is Active
        │
-       │  Voters cast YES/NO votes throughout the day
+       │  Voters cast YES/NO votes (any address, one vote each)
        │
-Day 1  │  timelock_delay (17280 ledgers ≈ 24 h) elapses
+Day 1  │  voting_period (17280 ledgers ≈ 24 h) elapses
        │
        │  finalize() → Proposal #0 moves to Queued
+       │  executable_at = finalize_ledger + timelock_delay
        │
-       │  (Optional: additional review period)
+Day 2  │  timelock_delay (17280 ledgers ≈ 24 h) elapses
        │
-       │  execute() → Target contract WASM is replaced
+       │  execute() → Manager calls target.upgrade(new_wasm_hash)
+       │             Target WASM is replaced (v1 → v2)
        │             Proposal #0 moves to Executed
 ```
 
@@ -342,31 +440,43 @@ Day 1  │  timelock_delay (17280 ledgers ≈ 24 h) elapses
 
 | Scenario | Error | Resolution |
 |---|---|---|
-| `finalize` before timelock | `TimelockNotExpired` | Wait until `time_until_executable` returns 0 |
-| `finalize` with <3 votes | `Defeated` | Create a new proposal; improve voter outreach |
-| `finalize` with <51% YES | `Defeated` | Create a new proposal with revised upgrade |
+| `vote` after voting period ends | `VotingPeriodEnded` | Votes are only accepted while `ledger.sequence() <= voting_ends_at` |
+| `finalize` before voting period ends | `VotingStillActive` | Wait until `ledger.sequence() > voting_ends_at` |
+| `finalize` with < 3 votes | Proposal is **Defeated** (not an error) | Create a new proposal; improve voter outreach |
+| `finalize` with < 51% YES | Proposal is **Defeated** (not an error) | Create a new proposal with revised upgrade |
+| `execute` before timelock expires | `TimelockNotExpired` | Wait until `time_until_executable` returns 0 |
 | `execute` on non-Queued proposal | `NotQueued` | Check proposal status with `get_proposal` |
-| Trying to vote twice | `AlreadyVoted` | Each address may vote exactly once per proposal |
+| Voting twice | `AlreadyVoted` | Each address may vote exactly once per proposal |
+| Cancelling a Defeated/Executed/Cancelled proposal | `ProposalFinalized` | Only Active and Queued proposals can be cancelled |
 | WASM hash not uploaded | Transaction error | Run `stellar contract upload` first |
-| Target contract missing `upgrade()` | Invocation panic | Ensure target implements the standard Soroban upgrade interface |
+| Target contract missing `upgrade()` | Host-level error (reverts transaction) | Ensure target implements `upgrade(new_wasm_hash)` |
 
 ---
 
 ## What the `upgrade()` Function Looks Like on the Target
 
 For the upgrade manager to succeed, the target contract must expose an `upgrade`
-function that calls `env.deployer().update_current_contract_wasm()`:
+function that authenticates the upgrade manager and then calls
+`env.deployer().update_current_contract_wasm()`:
 
 ```rust
-// In your target contract's lib.rs:
 pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-    // Add auth here if needed (e.g., only callable from the upgrade manager)
+    let manager: Address = env
+        .storage()
+        .instance()
+        .get(&symbol_short!("manager"))
+        .expect("manager not set");
+    // Only the stored manager may trigger an upgrade.
+    manager.require_auth();
     env.deployer().update_current_contract_wasm(new_wasm_hash);
 }
 ```
 
-This is the standard Soroban upgrade interface. The upgrade manager calls it via
+The upgrade manager calls it via
 `env.invoke_contract(&target, &symbol_short!("upgrade"), vec![&env, hash.to_val()])`.
+
+See [`contracts/example-target/src/lib.rs`](../contracts/example-target/src/lib.rs)
+for the full reference implementation.
 
 ---
 
@@ -376,3 +486,4 @@ This is the standard Soroban upgrade interface. The upgrade manager calls it via
 - [contracts/upgrade-manager/src/lib.rs](../contracts/upgrade-manager/src/lib.rs) — contract source
 - [contracts/upgrade-manager/src/governance.rs](../contracts/upgrade-manager/src/governance.rs) — voting logic
 - [contracts/upgrade-manager/src/timelock.rs](../contracts/upgrade-manager/src/timelock.rs) — timelock enforcement
+- [contracts/example-target/src/lib.rs](../contracts/example-target/src/lib.rs) — example target contract

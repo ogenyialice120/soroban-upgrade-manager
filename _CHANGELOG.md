@@ -319,3 +319,94 @@ The new `test_real_v1_to_v2_upgrade_through_manager` test improves on this by us
 **Why:** The old claim overstated what the test proved. This correction ensures the changelog and documentation accurately describe what is and is not verified.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 66 passed, 0 failed.
+
+---
+
+## 2026-10-27 — docs/phase-3-docs-corrections
+
+### Changes — 3.1: Walkthrough rewritten
+
+**docs/walkthrough.md** — complete rewrite.
+
+**Why:** The old walkthrough deployed a second instance of the upgrade-manager as the "target" contract. The upgrade-manager has no `upgrade()` function, so `execute()` would fail with a host error. The old walkthrough also said `finalize()` was called "after the timelock delay has elapsed" — but `finalize()` is called after the **voting period** ends, and the timelock starts only after `finalize()` is called. The old overview said "token holders cast YES/NO votes" but voting is one-address-one-vote, not token-weighted. The old `initialize` command was missing the `--voting_period` parameter.
+
+**What changed:**
+- Target is now `example-target` (with `__constructor`, `version()`, `upgrade()`), not a second upgrade-manager.
+- Overview diagram shows two separate time windows (voting period + timelock).
+- `initialize` command includes `--voting_period 17280`.
+- Step 7 (finalize) correctly states it is called after the voting period ends.
+- Step 8 (wait for timelock) and Step 9 (execute) are now separate steps.
+- `time_until_executable` documented as returning 0 before finalize.
+- Failure modes table corrected: `VotingStillActive` (not `TimelockNotExpired`) for early finalize.
+- All CLI commands match real contract signatures.
+
+### Changes — 3.2: README corrections
+
+**README.md** — multiple corrections:
+
+- **Lifecycle diagram:** Replaced the old single-window diagram with a two-window diagram showing voting period (`voting_ends_at`) and timelock delay (`executable_at`) as separate concepts.
+- **Config reference:** Added `voting_period` row (was missing entirely).
+- **API table:** Fixed auth column — `initialize` is "Admin (must sign)" (was "None"), `finalize` and `execute` are "Anyone" (was not clear).
+- **Voting description:** Changed from "token holders" to "any address can vote YES/NO (one address, one vote)".
+- **Timelock claim:** Removed "default ≈ 24 h" — there is no default; timelock is a required parameter.
+- **Community-stops-upgrade:** Changed from "Admin can cancel; voters can reject" to "Voters can outvote a bad proposal; admin can cancel Active or Queued proposals".
+- **Compound/OZeppelin comparison:** Changed from "same pattern used by" to "inspired by Compound Governor Bravo and OpenZeppelin's TimelockController ... Unlike those systems, this contract uses unweighted one-address-one-vote voting rather than token-weighted voting."
+- **Duplicate `---`:** Removed the double horizontal rule between "Why Not" and "Features" sections.
+- **Filler sentence:** Removed "This project welcomes contributions from the community..".
+
+**Why:** The README contained multiple inaccuracies that contradicted the code: token-holder voting (code uses one-address-one-vote), a default timelock (code has none), missing `voting_period` in config reference, wrong auth requirements in API table, and an inaccurate lifecycle diagram.
+
+### Changes — 3.3: README new sections
+
+**README.md** — added three new sections:
+
+- **Security Model & Limitations:** unaudited, not sybil-resistant, powerful admin key (multisig/DAO recommended), admin can cancel Queued after approval, no proposal deposit (spam possible), timelock starts at finalize, target MUST authenticate manager, no expiry, no WASM compatibility check.
+- **Possible Future Work:** sybil resistance, proposal deposits, proposal expiry, WASM compatibility check.
+- **Recommended Workflow:** build both WASM versions, run upgrade-compatibility check (e.g., soroban-upgrade-safeguard), upload WASM, create proposal with report link in description, vote/finalize/execute. Notes this is guidance, not enforcement.
+
+**Why:** The README lacked a security model section, leaving users unaware of the contract's limitations. The recommended workflow section guides users to check storage-layout compatibility before proposing an upgrade.
+
+### Changes — 3.4: Error-code table
+
+**README.md** — added error-code table covering all 20 `Error` variants in `types.rs`.
+
+Each row lists: code, name, trigger, and fix. `ProposalDefeated` (code 8) is marked as "never returned — `finalize()` returns `ProposalStatus::Defeated` as a success value, not this error."
+
+**Why:** The README had no error-code reference. Users had to read the source to understand error codes. The table also documents that `ProposalDefeated` is defined but never returned, preventing confusion.
+
+### Changes — 3.5: CONTRIBUTING.md fixed
+
+**CONTRIBUTING.md** — three fixes:
+
+- **Clone URL:** Changed from `https://github.com` to `https://github.com/ogenyialice120/soroban-upgrade-manager.git`.
+- **Issue reporting:** Removed reference to non-existent "bug template"; replaced with "Open a GitHub Issue".
+- **Changelog requirement:** Added step 5 in "Submitting Pull Requests" requiring every PR to append a dated, reasoned entry to `_CHANGELOG.md` with date, branch name, changes, why, breaking notes, and test results.
+- **Rust version:** Changed from "1.74+" to "Latest stable" (Part C will determine the real minimum).
+
+**Why:** The clone URL was truncated and would fail. The bug template referenced did not exist in the repository. There was no changelog requirement, so PRs could be merged without documenting what changed or why.
+
+### Changes — 3.6: SECURITY.md added
+
+**SECURITY.md** (new file) — private vulnerability reporting policy.
+
+Instructs reporters to use GitHub's private vulnerability reporting (Security tab → "Report a vulnerability"). Includes what to include in a report, response timeline (72h acknowledgement, 7-day initial assessment), and scope. References the README's Security Model section.
+
+**Why:** The repository had no security policy. Without one, well-intentioned researchers might open public issues for vulnerabilities, exposing users before a fix is deployed.
+
+### Changes — 3.7: Claims audit created
+
+**docs/claims-audit.md** (new file) — audit table mapping every behavioral claim in README, walkthrough, CONTRIBUTING, and doc comments to its implementing function and test name.
+
+- 44 README claims (all VERIFIED)
+- 10 walkthrough claims (all VERIFIED)
+- 4 CONTRIBUTING claims (all VERIFIED)
+- 30 doc comment claims (28 VERIFIED, 2 REWORDED)
+- 14 REWORDED/REMOVED entries documenting what was wrong with the old docs
+
+Two claims marked REWORDED:
+- `next_proposal_id` overflow (not reachable in normal operation; testing requires u64 wrap)
+- `example-target::version` feature flag (compile-time feature; not testable in a single env)
+
+**Why:** The task requires that every behavioral claim in the documentation is backed by code and a test. The audit provides traceability and will be verified by `scripts/check_claims.sh` in CI (Part C).
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 66 passed, 0 failed. (No code changes in this part — only documentation.)

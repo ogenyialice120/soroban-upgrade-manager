@@ -410,3 +410,80 @@ Two claims marked REWORDED:
 **Why:** The task requires that every behavioral claim in the documentation is backed by code and a test. The audit provides traceability and will be verified by `scripts/check_claims.sh` in CI (Part C).
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 66 passed, 0 failed. (No code changes in this part — only documentation.)
+
+---
+
+## 2026-10-27 — ci/phase-4-ci-and-tooling
+
+### Changes — 4.1: CI workflow updated
+
+**.github/workflows/ci.yml**
+- Added `cargo fmt --all -- --check` step.
+- Added `cargo clippy --workspace --all-targets -- -D warnings` step.
+- Added `rustfmt` and `clippy` components to the Rust toolchain installation.
+- Added `bash scripts/check_claims.sh` step (verify claims audit).
+- Added fixture drift check: rebuilds fixtures with `scripts/build_fixtures.sh` and fails if committed `.wasm` or `SHA256SUMS` differ.
+
+**Why:** The old CI only ran `cargo build`, `cargo test`, and a WASM build. It did not check formatting or lints, so code with `cargo fmt` violations or clippy warnings could be merged. The claims audit and fixture drift checks were not present.
+
+### Changes — 4.2: scripts/check_claims.sh
+
+**scripts/check_claims.sh** (new file)
+- Validates `docs/claims-audit.md` against `contracts/upgrade-manager/src/test.rs`.
+- Checks:
+  1. Every VERIFIED row has a test name in backticks.
+  2. Every named test exists as `fn <name>` in test.rs (whole-word match via `grep -qE "fn ${tname}\b"`).
+  3. Every status is VERIFIED, REWORDED, or REMOVED.
+- Design-note rows with test name "N/A" are allowed (e.g., "N/A (design note)").
+
+**Testing against a broken copy:** A deliberately broken copy of claims-audit.md was created with `test_initialize_success` replaced by `test_does_not_exist`. The script correctly detected 4 errors (the test name appeared in multiple rows) and exited with code 1. The good copy passes with "OK: All claims audit checks passed."
+
+**What the script proves:** It proves that a test function named in a VERIFIED claim exists in test.rs. It does NOT prove that the test covers the claim — a test named `test_foo` might not test what the claim says. The script's purpose is to catch claims that reference non-existent tests.
+
+**Why:** The claims audit must be verifiable in CI. Without this check, a claim could reference a test name that doesn't exist and go unnoticed.
+
+### Changes — 4.3: rust-toolchain.toml
+
+**rust-toolchain.toml** (new file)
+- Pins the Rust toolchain to `stable` with `wasm32-unknown-unknown` target and `rustfmt`/`clippy` components.
+
+**Why:** Without a pinned toolchain, contributors might use different Rust versions, causing inconsistent builds. The `stable` channel matches what CI uses (via `dtolnay/rust-toolchain@stable`).
+
+### Changes — 4.4: Fixture drift check in CI
+
+**.github/workflows/ci.yml** — added "Rebuild fixtures and verify drift" step.
+
+Rebuilds fixtures with `bash scripts/build_fixtures.sh` and compares the output against committed `.wasm` and `SHA256SUMS` files using `git diff --quiet`. If they differ, CI fails with a message instructing the contributor to rebuild and commit.
+
+**Why:** If someone changes the `example-target` contract source, the committed fixtures become stale. The drift check ensures the committed fixtures always match the current source. Note: builds are byte-reproducible with the same toolchain version, so this comparison is reliable within a given stable release.
+
+### Changes — 4.5: Minimum Rust version determined and set
+
+**Cargo.toml** (workspace root)
+- Added `rust-version = "1.85.0"`.
+
+**Why:** The declared MSRV for `soroban-sdk 22.0.11` is 1.84.0, but a transitive dependency (`zeroize_derive 1.5.0`) requires `edition2024`, which was stabilized in Rust 1.85.0. Building with 1.84.0 fails with "the package requires the Cargo feature called `edition2024`". The actual minimum is 1.85.0.
+
+The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the contract would not build with 1.74). The old CONTRIBUTING.md also said "Rust 1.74+". Both were fixed in Part B to say "Rust" / "Latest stable" respectively, and this Part C sets the actual minimum in Cargo.toml.
+
+### Changes — 4.6: .pre-commit-config.yaml
+
+**.pre-commit-config.yaml** (new file)
+- `pre-commit-hooks` (rev v4.6.0): trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-merge-conflict, check-added-large-files (max 100 KB).
+- Local hooks: `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets -- -D warnings`.
+
+**Why:** Pre-commit hooks catch issues before code reaches CI. The `pre-commit-hooks` suite catches common file hygiene problems (trailing whitespace, missing newline, merge conflict markers, large files). The local hooks run the same `cargo fmt` and `clippy` checks that CI enforces, so formatting/lint issues are caught locally.
+
+### Changes — 4.7: Release workflow
+
+**.github/workflows/release.yml** (new file)
+- Triggers on `v*` tags only.
+- Builds the upgrade-manager WASM in release mode.
+- Computes SHA-256 of the `.wasm` file.
+- Creates a GitHub release using `softprops/action-gh-release@v2`.
+- Attaches `soroban_upgrade_manager.wasm` to the release.
+- Includes SHA-256 and deployment instructions in the release body.
+
+**Why:** Without a release workflow, there is no reproducible way to build and publish the WASM artifact. The release workflow ensures every tagged release has a downloadable `.wasm` with a verifiable SHA-256 hash.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 66 passed, 0 failed. (No contract code changes — only tooling and config.)

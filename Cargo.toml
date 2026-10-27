@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/upgrade-manager"]
+members = ["contracts/upgrade-manager", "contracts/example-target"]
 
 [workspace.dependencies]
 soroban-sdk = { version = "22.0.11", features = [] }

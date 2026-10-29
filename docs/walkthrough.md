@@ -156,8 +156,8 @@ cargo build --target wasm32-unknown-unknown --release \
 TARGET_WASM="target/wasm32-unknown-unknown/release/example_target.wasm"
 
 # Deploy example-target, passing the manager address to the constructor.
-# The constructor calls manager.require_auth(), so the admin key that controls
-# the manager must sign this transaction.
+# The constructor stores the manager without requiring auth (the manager is a
+# contract address and cannot sign), so no key needs to sign for the constructor.
 TARGET_ID=$(stellar contract deploy \
   --wasm "$TARGET_WASM" \
   --source admin \

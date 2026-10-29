@@ -88,17 +88,18 @@ while IFS= read -r line; do
             continue
         fi
 
-        # For VERIFIED rows, test_name must be non-empty and exist in test.rs
+        # For VERIFIED rows, test_name must be non-empty and exist in test.rs.
+        # A VERIFIED row whose test column is N/A is not verifiable and must fail.
         if [[ "$status" == "VERIFIED" ]]; then
+            if [[ "$test_name_raw" == "N/A"* ]]; then
+                echo "ERROR: VERIFIED row has N/A test column (not verifiable): $line"
+                ERRORS=$((ERRORS + 1))
+                continue
+            fi
             # Extract test names from backtick-quoted strings
-            # May be "N/A" for design notes or contain multiple test names
             test_names=$(echo "$test_name_raw" | grep -oP '`\Ktest_\w+(?=`)' || true)
 
             if [[ -z "$test_names" ]]; then
-                # Allow N/A for design-note rows (e.g., "N/A (design note)")
-                if [[ "$test_name_raw" == "N/A"* ]]; then
-                    continue
-                fi
                 echo "ERROR: VERIFIED row has no test function name in backticks: $line"
                 ERRORS=$((ERRORS + 1))
                 continue

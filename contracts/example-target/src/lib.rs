@@ -42,8 +42,8 @@ impl ExampleTarget {
     /// may call `upgrade()`.  Called automatically by the Soroban host during
     /// contract deployment; cannot be invoked again afterward.
     pub fn __constructor(env: Env, manager: Address) {
-        // Require auth from the manager so the deployer must control it.
-        manager.require_auth();
+        // The manager is stored at deploy time. The manager is a contract address
+        // and cannot sign, so we intentionally do NOT call require_auth() here.
         env.storage()
             .instance()
             .set(&soroban_sdk::symbol_short!("manager"), &manager);

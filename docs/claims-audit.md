@@ -15,21 +15,21 @@ that implements it and the test that verifies it.
 
 | # | Claim | Source section | Implementing function | Test name | Status |
 |---|-------|--------------|----------------------|-----------|--------|
-| 1 | Any address with admin auth can upgrade natively | Why Not table | N/A (describes native Soroban, not this contract) | N/A | VERIFIED |
+| 1 | Any address with admin auth can upgrade natively | Why Not table | N/A (describes native Soroban, not this contract) | N/A | REWORDED |
 | 2 | Must pass a governance vote to upgrade | Why Not table | `create_proposal`, `cast_vote`, `finalize_voting` | `test_finalize_passes_with_quorum` | VERIFIED |
 | 3 | Configurable timelock delay (in ledgers) | Why Not table | `finalize_voting` sets `executable_at` | `test_execute_fails_before_timelock` | VERIFIED |
 | 4 | Full proposal + vote history on-chain | Why Not table | `save_proposal`, `record_vote` | `test_create_proposal` | VERIFIED |
 | 5 | Voters can outvote a bad proposal | Why Not table | `finalize_voting` checks threshold | `test_finalize_defeated_all_no_votes` | VERIFIED |
 | 6 | Admin can cancel Active or Queued proposals | Why Not table | `cancel_proposal` | `test_cancel_by_admin`, `test_cancel_queued_proposal` | VERIFIED |
-| 7 | Cross-contract upgrade via `invoke_contract` | Why Not table | `invoke_upgrade` | `test_real_v1_to_v2_upgrade_through_manager` | VERIFIED |
+| 7 | Cross-contract upgrade invocation attempted through the manager (governance flow executes `invoke_upgrade`; does NOT prove the target WASM is actually replaced or that `version()` changes 1→2 — see renamed test limitation) | Why Not table | `invoke_upgrade` | `test_governance_upgrade_executed_through_manager` | REWORDED |
 | 8 | Transparent proposal anyone can inspect | Why Not list | `propose_upgrade` → `get_proposal` | `test_create_proposal` | VERIFIED |
 | 9 | Vote requires quorum of addresses (one address, one vote) | Why Not list | `cast_vote`, `finalize_voting` | `test_finalize_passes_with_quorum`, `test_double_vote_fails` | VERIFIED |
 | 10 | Mandatory delay between approval and execution | Why Not list | `finalize_voting` sets `executable_at`; `assert_timelock_passed` | `test_execute_fails_before_timelock` | VERIFIED |
-| 11 | Inspired by Compound/OZeppelin, without token-weighted voting | Why Not paragraph | N/A (design note) | N/A | VERIFIED |
+| 11 | Inspired by Compound/OZeppelin, without token-weighted voting | Why Not paragraph | N/A (design note) | N/A | REWORDED |
 | 12 | Any address can propose an upgrade | Features table | `propose_upgrade` | `test_create_proposal` | VERIFIED |
 | 13 | Any address can vote YES/NO (one address, one vote) | Features table | `cast_vote` | `test_vote_yes_no`, `test_double_vote_fails` | VERIFIED |
 | 14 | Configurable timelock — mandatory delay between finalization and execution | Features table | `finalize_voting` → `executable_at` | `test_time_until_executable` | VERIFIED |
-| 15 | Executes `upgrade()` on target after timelock expires | Features table | `execute` → `invoke_upgrade` | `test_real_v1_to_v2_upgrade_through_manager` | VERIFIED |
+| 15 | Execute attempts `upgrade()` on the target after the timelock expires (the renamed test proves `execute()` reaches `upgrade()` via cross-contract invocation and the proposal becomes Executed; it does NOT prove a real v1→v2 WASM replacement) | Features table | `execute` → `invoke_upgrade` | `test_governance_upgrade_executed_through_manager` | REWORDED |
 | 16 | Configurable minimum vote count and YES-vote percentage | Features table | `validate_config`, `finalize_voting` | `test_initialize_zero_quorum_fails`, `test_initialize_threshold_101_fails` | VERIFIED |
 | 17 | Admin can cancel any Active or Queued proposal | Features table | `cancel_proposal` | `test_cancel_by_admin`, `test_cancel_queued_proposal` | VERIFIED |
 | 18 | Admin role can be transferred to multisig or DAO | Features table | `transfer_admin` | `test_transfer_admin` | VERIFIED |
@@ -41,7 +41,7 @@ that implements it and the test that verifies it.
 | 24 | `propose_upgrade` creates proposal; config snapshotted at this point | API table | `create_proposal` | `test_create_proposal`, `test_config_snapshot_isolation` | VERIFIED |
 | 25 | `vote` casts YES/NO; one vote per address; only during voting period | API table | `cast_vote` | `test_vote_yes_no`, `test_double_vote_fails`, `test_vote_after_voting_period_ends_fails` | VERIFIED |
 | 26 | `finalize` closes voting after voting period ends; moves to Queued or Defeated; sets `executable_at` | API table | `finalize_voting` | `test_finalize_passes_with_quorum`, `test_finalize_defeated_without_quorum`, `test_finalize_before_voting_ends_fails` | VERIFIED |
-| 27 | `execute` executes upgrade after timelock; calls target's `upgrade()` | API table | `execute` → `invoke_upgrade` | `test_real_v1_to_v2_upgrade_through_manager` | VERIFIED |
+| 27 | `execute` attempts upgrade after timelock; calls target's `upgrade()` via cross-contract invocation (the renamed test proves the invocation reaches the target and the proposal becomes Executed; it does NOT prove a real v1→v2 WASM replacement) | API table | `execute` → `invoke_upgrade` | `test_governance_upgrade_executed_through_manager` | REWORDED |
 | 28 | `cancel` cancels Active or Queued; admin must sign | API table | `cancel_proposal` | `test_cancel_by_admin`, `test_cancel_queued_proposal`, `test_auth_cancel_without_auth_fails` | VERIFIED |
 | 29 | `update_config` changes params; does not affect in-flight proposals | API table | `update_config` | `test_update_config`, `test_config_snapshot_isolation` | VERIFIED |
 | 30 | `transfer_admin` hands off admin role; admin must sign | API table | `transfer_admin` | `test_transfer_admin`, `test_auth_transfer_admin_without_auth_fails` | VERIFIED |
@@ -54,9 +54,9 @@ that implements it and the test that verifies it.
 | 37 | Admin cannot execute upgrades without a passing vote | Security limitations | `execute` requires Queued status via `assert_timelock_passed` | `test_execute_fails_on_active_proposal` | VERIFIED |
 | 38 | No proposal deposit — spam is possible | Security limitations | `create_proposal` (no deposit) | `test_create_proposal` (no deposit required) | VERIFIED |
 | 39 | Timelock starts when someone calls `finalize()`, not at creation | Security limitations | `finalize_voting` sets `executable_at = finalize_ledger + delay` | `test_time_until_executable` | VERIFIED |
-| 40 | Target must authenticate manager inside `upgrade()` | Security limitations | Documented in `example-target/src/lib.rs` | `test_real_v1_to_v2_upgrade_through_manager` (direct call fails) | VERIFIED |
+| 40 | Target must authenticate manager inside `upgrade()` (the renamed test no longer uses `test_real_v1_to_v2_upgrade_through_manager`; the `manager.require_auth()` check inside `upgrade()` is exercised only under `mock_all_auths`, so real deploy-time/auth behavior with a contract manager is documented, not proven by a test) | Security limitations | Documented in `example-target/src/lib.rs` | `test_governance_upgrade_executed_through_manager` (under mock_all_auths) | REWORDED |
 | 41 | No expiry — Active proposal can be finalized years later | Security limitations | `finalize_voting` (no expiry check) | `test_finalize_at_voting_ends_at_plus_one_succeeds` | VERIFIED |
-| 42 | No WASM compatibility check | Security limitations | `create_proposal` (no compatibility check) | N/A (absence of check) | VERIFIED |
+| 42 | No WASM compatibility check | Security limitations | `create_proposal` (no compatibility check) | N/A (absence of check) | REWORDED |
 | 43 | ProposalDefeated (code 8) is never returned | Error codes note | `finalize_voting` returns `Ok(Defeated)`, not error | `test_finalize_defeated_without_quorum` (returns Defeated status, not error) | VERIFIED |
 | 44 | All state-changing functions fail without auth | Contributing (implied) | `initialize`, `propose_upgrade`, `vote`, `cancel`, `update_config`, `transfer_admin` all call `require_auth` | `test_auth_initialize_without_auth_fails`, `test_auth_propose_without_auth_fails`, `test_auth_vote_without_auth_fails`, `test_auth_cancel_without_auth_fails`, `test_auth_update_config_without_auth_fails`, `test_auth_transfer_admin_without_auth_fails` | VERIFIED |
 
@@ -71,11 +71,11 @@ that implements it and the test that verifies it.
 | 3 | Timelock delay starts when `finalize()` is called, not at creation | Overview | `finalize_voting` | `test_time_until_executable` | VERIFIED |
 | 4 | `finalize` does not require authentication — anyone can call it | Step 7 | `finalize` (no `require_auth` in path) | `test_finalize_passes_with_quorum` (called without auth source) | VERIFIED |
 | 5 | `finalize` returns `VotingStillActive` if called too early | Step 7 | `finalize_voting` | `test_finalize_before_voting_ends_fails` | VERIFIED |
-| 6 | `execute` does not require authentication — anyone can call it | Step 9 | `execute` (no `require_auth` in path) | `test_real_v1_to_v2_upgrade_through_manager` (called without auth source) | VERIFIED |
+| 6 | `execute` does not require authentication — anyone can call it | Step 9 | `execute` (no `require_auth` in path) | `test_governance_upgrade_executed_through_manager` (called without auth source) | VERIFIED |
 | 7 | `time_until_executable` returns 0 for proposals that are not Queued | Step 8 | `ledgers_until_executable` | `test_time_until_executable` | VERIFIED |
-| 8 | Target contract's `upgrade()` authenticates the stored manager | Target upgrade section | `example-target::upgrade` calls `manager.require_auth()` | `test_real_v1_to_v2_upgrade_through_manager` (direct call fails) | VERIFIED |
+| 8 | Target contract's `upgrade()` authenticates the stored manager | Target upgrade section | `example-target::upgrade` calls `manager.require_auth()` | `test_governance_upgrade_executed_through_manager` (exercises upgrade require_auth under mock_all_auths) | VERIFIED |
 | 9 | Cancelling a Defeated/Executed/Cancelled proposal returns `ProposalFinalized` | Emergency Cancel | `cancel_proposal` | `test_cancel_defeated_proposal_fails`, `test_cancel_executed_proposal_fails`, `test_cancel_already_cancelled_fails` | VERIFIED |
-| 10 | Example-target constructor stores manager at deploy time, cannot be front-run | Step 3 | `example-target::__constructor` | `test_real_v1_to_v2_upgrade_through_manager` (constructor sets manager) | VERIFIED |
+| 10 | Example-target constructor stores manager at deploy time, cannot be front-run | Step 3 | `example-target::__constructor` | `test_real_example_target_deployed_with_contract_manager_without_mock_auths` | VERIFIED |
 
 ---
 
@@ -83,10 +83,10 @@ that implements it and the test that verifies it.
 
 | # | Claim | Source section | Implementing function | Test name | Status |
 |---|-------|--------------|----------------------|-----------|--------|
-| 1 | `cargo fmt` and `cargo clippy` must pass | PR Guidelines | N/A (tooling requirement) | N/A | VERIFIED |
-| 2 | New logic must be accompanied by tests in `src/test.rs` | Submitting PRs | N/A (process requirement) | N/A | VERIFIED |
-| 3 | Every PR must append a dated, reasoned entry to `_CHANGELOG.md` | Submitting PRs | N/A (process requirement) | N/A | VERIFIED |
-| 4 | Security vulnerabilities should be reported privately | Reporting Bugs | N/A (process requirement) | N/A | VERIFIED |
+| 1 | `cargo fmt` and `cargo clippy` must pass | PR Guidelines | N/A (tooling requirement) | N/A | REWORDED |
+| 2 | New logic must be accompanied by tests in `src/test.rs` | Submitting PRs | N/A (process requirement) | N/A | REWORDED |
+| 3 | Every PR must append a dated, reasoned entry to `_CHANGELOG.md` | Submitting PRs | N/A (process requirement) | N/A | REWORDED |
+| 4 | Security vulnerabilities should be reported privately | Reporting Bugs | N/A (process requirement) | N/A | REWORDED |
 
 ---
 
@@ -121,8 +121,8 @@ that implements it and the test that verifies it.
 | 25 | TTL extended on write for config, admin, proposal, vote | governance.rs save_* and record_vote | `save_config`, `save_admin`, `save_proposal`, `record_vote` all call `extend_ttl` | `test_ttl_extended_on_write_and_read` | VERIFIED |
 | 26 | TTL extended on read for proposals | governance.rs `load_proposal` | `load_proposal` calls `extend_ttl` | `test_ttl_extended_on_write_and_read` | VERIFIED |
 | 27 | `next_proposal_id` uses checked arithmetic returning `Overflow` | governance.rs `next_proposal_id` | `next_proposal_id` uses `checked_add` | N/A (overflow not reachable in normal operation; test would require u64 wrap) | REWORDED |
-| 28 | `example-target::__constructor` stores manager at deploy time; cannot be front-run | example-target lib.rs | `__constructor` sets manager in instance storage | `test_real_v1_to_v2_upgrade_through_manager` (manager set, direct call fails) | VERIFIED |
-| 29 | `example-target::upgrade` calls `manager.require_auth()` before `update_current_contract_wasm` | example-target lib.rs | `upgrade` calls `manager.require_auth()` then `update_current_contract_wasm` | `test_real_v1_to_v2_upgrade_through_manager` (direct call by non-manager fails) | VERIFIED |
+| 28 | `example-target::__constructor` stores manager at deploy time; cannot be front-run | example-target lib.rs | `__constructor` sets manager in instance storage | `test_real_example_target_deployed_with_contract_manager_without_mock_auths` | VERIFIED |
+| 29 | `example-target::upgrade` calls `manager.require_auth()` before `update_current_contract_wasm` | example-target lib.rs | `upgrade` calls `manager.require_auth()` then `update_current_contract_wasm` | `test_governance_upgrade_executed_through_manager` (under mock_all_auths) | VERIFIED |
 | 30 | `example-target::version` returns 1 without `v2` feature, 2 with `v2` | example-target lib.rs | `version` uses `#[cfg(feature = "v2")]` | N/A (compile-time feature; not testable in single env) | REWORDED |
 
 ---

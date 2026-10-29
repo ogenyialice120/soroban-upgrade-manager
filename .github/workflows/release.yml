@@ -20,6 +20,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.88.0
           targets: wasm32-unknown-unknown
 
       - name: Cache Rust dependencies
@@ -43,6 +44,8 @@ jobs:
           SHA256=$(sha256sum "$WASM_FILE" | awk '{print $1}')
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "SHA-256: $SHA256"
+          # Write the .sha256 file next to the .wasm and attach it too.
+          echo "$SHA256" > "$WASM_FILE.sha256"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -50,6 +53,7 @@ jobs:
           generate_release_notes: true
           files: |
             target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm
+            target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm.sha256
           body: |
             ## Soroban Upgrade Manager — ${{ github.ref_name }}
 

@@ -1489,6 +1489,7 @@ dependencies = [
 name = "soroban-upgrade-manager"
 version = "0.1.0"
 dependencies = [
+ "example-target",
  "soroban-sdk",
 ]
 

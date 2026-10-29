@@ -102,6 +102,7 @@ mod no_upgrade_contract {
 #[cfg(test)]
 mod tests {
     use crate::{UpgradeManager, UpgradeManagerClient};
+    use example_target::{ExampleTarget, ExampleTargetClient};
     use soroban_sdk::{
         symbol_short,
         testutils::{Address as _, Events, Ledger},
@@ -1207,14 +1208,25 @@ mod tests {
     /// table-index byte is LEB128-encoded (Rust ≥ 1.85.0 emits multi-byte zeros
     /// for this reserved byte). The mock host does not execute WASM code at all —
     /// it uses native Rust — so we use Bytes::new(&env) (empty bytes) as the
-    /// upload target. The SHA256 of the fixture WASMs is still documented in
-    /// tests/fixtures/SHA256SUMS and verified by the CI fixture drift check.
+    /// Governance upgrade executed through the manager.
     ///
-    /// **Limitation:** The mock host does not hot-swap WASM in memory after
-    /// update_current_contract_wasm, so we cannot call version() post-execute
-    /// and expect 2 within the same test env.
+    /// Exercises the full governance flow (initialize → propose → vote × 3 →
+    /// advance past voting → finalize → advance past timelock → execute) against
+    /// a `FixtureTarget` whose `upgrade()` authenticates the manager, and asserts
+    /// the proposal transitions to `Executed`. Also proves a direct call to
+    /// `target.upgrade()` by a non-manager address fails (separate env without
+    /// `mock_all_auths`).
+    ///
+    /// **Limitation:** This does NOT prove that the target contract's WASM is
+    /// actually replaced or that `version()` changes from 1 to 2. The mock host
+    /// accepts any hash registered by `upload_contract_wasm` and does not hot-swap
+    /// WASM in memory, so the real fixture WASMs (which modern Rust toolchains
+    /// emit with reference-types that soroban-wasmi 0.31.1 rejects) cannot be used
+    /// here. The test uses empty bytes as a placeholder hash. What it proves is
+    /// that `execute()` successfully invokes `upgrade()` on the target via
+    /// cross-contract invocation and the proposal transitions to `Executed`.
     #[test]
-    fn test_real_v1_to_v2_upgrade_through_manager() {
+    fn test_governance_upgrade_executed_through_manager() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -1290,6 +1302,29 @@ mod tests {
 
         manager.execute(&pid);
         assert_eq!(manager.get_proposal(&pid).status, ProposalStatus::Executed);
+    }
+
+    /// Deploys the real `example-target` contract with a contract address as
+    /// manager, WITHOUT `mock_all_auths()`.
+    ///
+    /// Before the fix, `__constructor` called `manager.require_auth()`, which
+    /// fails for real deployment because the manager is a contract and cannot
+    /// sign. This test proves that a contract address can now be stored as
+    /// manager at deploy time.
+    #[test]
+    fn test_real_example_target_deployed_with_contract_manager_without_mock_auths() {
+        let env = Env::default();
+        // Intentionally NOT calling env.mock_all_auths().
+
+        let manager_id = env.register(UpgradeManager, ());
+
+        // Deploy the real example-target with the manager contract as manager.
+        // The constructor no longer calls manager.require_auth(), so this
+        // succeeds even though the manager is a contract address that cannot sign.
+        let target_id = env.register(ExampleTarget, (manager_id.clone(),));
+        let target_client = ExampleTargetClient::new(&env, &target_id);
+        assert_eq!(target_client.get_manager(), manager_id);
+        assert_eq!(target_client.version(), 1u32);
     }
 
     /// Double-execute fails with NotQueued on the second call.

@@ -487,3 +487,31 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 **Why:** Without a release workflow, there is no reproducible way to build and publish the WASM artifact. The release workflow ensures every tagged release has a downloadable `.wasm` with a verifiable SHA-256 hash.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 66 passed, 0 failed. (No contract code changes — only tooling and config.)
+
+---
+
+## 2026-10-29 — fix/followup-honest-and-deployable
+
+### Changes
+
+**contracts/example-target/src/lib.rs** — Removed `manager.require_auth()` from `__constructor`. The manager is a contract address and cannot sign, so requiring constructor auth made real deployment fail. The manager is now stored without auth.
+
+**docs/walkthrough.md** — Removed the sentence saying the admin key must sign when deploying the target; the constructor no longer requires auth.
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_real_example_target_deployed_with_contract_manager_without_mock_auths`, which deploys the real `example-target` with a contract address as manager without `mock_all_auths`. Renamed `test_real_v1_to_v2_upgrade_through_manager` to `test_governance_upgrade_executed_through_manager` because it cannot prove a real v1→v2 WASM upgrade (the mock host does not hot-swap WASM); the new name no longer claims one.
+
+**Cargo.toml** (workspace root) — Moved `rust-version` from `[workspace]` (which Cargo ignored with "unused manifest key") under `[workspace.package]` and set it to `1.88.0` (the real minimum; the lockfile needs 1.88.0). Added `rust-version.workspace = true` to both contracts' `Cargo.toml`.
+
+**rust-toolchain.toml, scripts/build_fixtures.sh, .github/workflows/ci.yml, .github/workflows/release.yml** — All now use Rust `1.88.0` consistently. Fixed contradictory text (build_fixtures.sh said 1.84.0; changelog said 1.85.0).
+
+**docs/claims-audit.md** — Changed rows 7, 15, 27 and 40 from VERIFIED to REWORDED with honest explanations (renamed test no longer claims a real WASM upgrade). Changed rows 1, 11 and 42 from VERIFIED to REWORDED (their test column is N/A). Also converted the CONTRIBUTING rows 1-4 (VERIFIED with N/A) to REWORDED and updated stale references to the old test name.
+
+**scripts/check_claims.sh** — Now fails on any VERIFIED row whose test column is N/A. Verified it passes on the fixed file and fails on a deliberately broken copy.
+
+**.kiro/spec.md** — Removed from the repo. Added `.kiro/` to `.gitignore`.
+
+**.github/workflows/release.yml** — Now attaches a `.sha256` file next to the `.wasm` release artifact.
+
+**Why:** Make the repository honest about what is proven (no false v1→v2 WASM upgrade claim, no VERIFIED claims with N/A tests), make it actually deployable (contract manager can be stored without signing), and make the Rust toolchain consistent across all configuration files.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 67 passed, 0 failed.

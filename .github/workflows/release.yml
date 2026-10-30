@@ -21,7 +21,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -35,12 +35,12 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build upgrade-manager WASM (release)
-        run: cargo build --target wasm32-unknown-unknown --release --manifest-path contracts/upgrade-manager/Cargo.toml
+        run: cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml
 
       - name: Compute SHA-256
         id: sha
         run: |
-          WASM_FILE="target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm"
+          WASM_FILE="target/wasm32v1-none/release/soroban_upgrade_manager.wasm"
           SHA256=$(sha256sum "$WASM_FILE" | awk '{print $1}')
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "SHA-256: $SHA256"
@@ -52,8 +52,8 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm
-            target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm.sha256
+            target/wasm32v1-none/release/soroban_upgrade_manager.wasm
+            target/wasm32v1-none/release/soroban_upgrade_manager.wasm.sha256
           body: |
             ## Soroban Upgrade Manager — ${{ github.ref_name }}
 

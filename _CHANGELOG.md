@@ -555,3 +555,26 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 **Why:** Reviewers and users need concrete, checkable evidence and reproducible steps that the mechanism works on a real network, with honest limits (manual run, not an automated test; not sybil-resistant).
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `bash scripts/check_claims.sh` → OK.
+## 2026-10-30 — fix/wasm-target-v1-none
+
+### Changes
+
+**.github/workflows/ci.yml** — Changed toolchain target and "Build (wasm)" command from `wasm32-unknown-unknown` to `wasm32v1-none`.
+
+**.github/workflows/release.yml** — Changed toolchain target, build command, `WASM_FILE` path, and release file paths from `wasm32-unknown-unknown` to `wasm32v1-none`.
+
+**rust-toolchain.toml** — Changed `targets` to `["wasm32v1-none"]`.
+
+**scripts/build_fixtures.sh** — Changed comments, `rustup target add`, both `--target` flags and both cp source paths from `wasm32-unknown-unknown` to `wasm32v1-none`.
+
+**docs/walkthrough.md** — Changed prerequisites, build commands and WASM paths from `wasm32-unknown-unknown` to `wasm32v1-none`.
+
+**CONTRIBUTING.md** — Changed target line, setup commands and PR checklist line from `wasm32-unknown-unknown` to `wasm32v1-none`.
+
+**contracts/upgrade-manager/tests/fixtures/target_v1.wasm, target_v2.wasm, SHA256SUMS** — Rebuilt with `wasm32v1-none`. New SHA-256 hashes: `target_v1.wasm` = `34fd6d1838f2d7d167500fe480061b5cd915b59320e2bdde5b433dde1aaec81f`, `target_v2.wasm` = `847f384de0399e007643b51c7b4b421e29a9e5f28f8b53f320593fbbee2d1f3c`.
+
+**Why:** Building with `wasm32-unknown-unknown` on Rust 1.82+ produces WASM the Stellar network rejects with "reference-types not enabled: zero byte expected". Stellar docs recommend `wasm32v1-none` (Rust 1.84+) or `stellar contract build`; `wasm32v1-none` builds on Rust 1.88.0 deployed and upgraded on testnet successfully. Earlier changelog entries claiming the fixtures were "valid for on-chain deployment" were not verified, and WASM built with `wasm32-unknown-unknown` was found NOT deployable. The release workflow had been producing such a file.
+
+New fixtures can now be uploaded in the test host via `upload_contract_wasm` (verified by a temporary test: both v1 and v2 uploaded successfully). No test changes were made; a real v1-to-v2 upgrade test may now be possible as a follow-up.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed; `bash scripts/check_claims.sh` → OK; `cargo build --release --target wasm32v1-none --manifest-path contracts/upgrade-manager/Cargo.toml` succeeded. `sha256sum -c SHA256SUMS` → all OK. `grep -rn "wasm32-unknown-unknown"` (excluding `_CHANGELOG.md` and `target/`) found only the README warning.

@@ -19,7 +19,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
           components: rustfmt, clippy
 
       - name: Cache Rust dependencies
@@ -46,7 +46,7 @@ jobs:
         run: cargo test --workspace
 
       - name: Build (wasm)
-        run: cargo build --target wasm32-unknown-unknown --release --manifest-path contracts/upgrade-manager/Cargo.toml
+        run: cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml
 
       - name: Verify claims audit
         run: bash scripts/check_claims.sh

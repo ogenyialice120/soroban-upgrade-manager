@@ -546,3 +546,12 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 **Why:** WASM builds are not byte-identical across machines because build paths are embedded, so the old rebuild-and-git-diff check failed on GitHub runners. CI now only checks that committed fixtures match their recorded checksums.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `sha256sum -c SHA256SUMS` → all OK. Other CI steps reviewed; no additional runner-breaking issues found.
+## 2026-10-30 — docs/testnet-verification
+
+### Changes
+
+**README.md** — Added "Verified on Stellar testnet" section documenting a manual testnet run (parameters, results, transactions, reproducible steps). Updated Getting Started build/deploy commands to use `wasm32v1-none`.
+
+**Why:** Reviewers and users need concrete, checkable evidence and reproducible steps that the mechanism works on a real network, with honest limits (manual run, not an automated test; not sybil-resistant).
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `bash scripts/check_claims.sh` → OK.

@@ -13,10 +13,12 @@
 #   git commit -m "chore: regenerate example-target fixture WASMs"
 #
 # TOOLCHAIN:
-# The WASMs MUST be built with the toolchain pinned in rust-toolchain.toml
-# (1.88.0) to ensure compatibility with soroban-env-host 22.1.3's WASM
-# validator (soroban-wasmi).  Newer Rust versions emit call_indirect with a
-# LEB128-encoded reserved byte that soroban-wasmi 0.31.1 rejects.
+# The WASMs are built with the toolchain pinned in rust-toolchain.toml
+# (1.88.0), matching the toolchain used for the rest of the workspace.
+# This version is used to keep builds consistent with the pinned toolchain;
+# no compatibility claim is made beyond that.
+#
+# NOTE: The committed fixtures were not verified to upload in the test host.
 #
 # Requirements: cargo, rustup with 1.88.0 toolchain installed.
 #   rustup install 1.88.0

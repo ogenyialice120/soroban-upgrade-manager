@@ -69,11 +69,11 @@ that implements it and the test that verifies it.
 | 1 | `initialize` takes `voting_period`, `timelock_delay`, `quorum`, `approval_threshold_pct` | Step 4 | `initialize` | `test_initialize_success` | VERIFIED |
 | 2 | Voting period ends at `voting_ends_at`; votes accepted while `ledger.sequence() <= voting_ends_at` | Overview | `cast_vote` | `test_vote_at_voting_ends_at_succeeds`, `test_vote_after_voting_period_ends_fails` | VERIFIED |
 | 3 | Timelock delay starts when `finalize()` is called, not at creation | Overview | `finalize_voting` | `test_time_until_executable` | VERIFIED |
-| 4 | `finalize` does not require authentication — anyone can call it | Step 7 | `finalize` (no `require_auth` in path) | `test_finalize_passes_with_quorum` (called without auth source) | VERIFIED |
+| 4 | `finalize` succeeds with quorum in the tested flow (test runs under mock_all_auths; does not prove finalize requires no authentication) | Step 7 | `finalize` (no `require_auth` in path) | `test_finalize_passes_with_quorum` (called without auth source) | REWORDED |
 | 5 | `finalize` returns `VotingStillActive` if called too early | Step 7 | `finalize_voting` | `test_finalize_before_voting_ends_fails` | VERIFIED |
-| 6 | `execute` does not require authentication — anyone can call it | Step 9 | `execute` (no `require_auth` in path) | `test_governance_upgrade_executed_through_manager` (called without auth source) | VERIFIED |
+| 6 | `execute` succeeds through the governance flow in the tested scenario (test runs under mock_all_auths; does not prove execute requires no authentication) | Step 9 | `execute` (no `require_auth` in path) | `test_governance_upgrade_executed_through_manager` (called without auth source) | REWORDED |
 | 7 | `time_until_executable` returns 0 for proposals that are not Queued | Step 8 | `ledgers_until_executable` | `test_time_until_executable` | VERIFIED |
-| 8 | Target contract's `upgrade()` authenticates the stored manager | Target upgrade section | `example-target::upgrade` calls `manager.require_auth()` | `test_governance_upgrade_executed_through_manager` (exercises upgrade require_auth under mock_all_auths) | VERIFIED |
+| 8 | Target `upgrade()` exercises `manager.require_auth()` under mock_all_auths (does not prove real deploy-time auth behavior with a contract manager) | Target upgrade section | `example-target::upgrade` calls `manager.require_auth()` | `test_governance_upgrade_executed_through_manager` (exercises upgrade require_auth under mock_all_auths) | REWORDED |
 | 9 | Cancelling a Defeated/Executed/Cancelled proposal returns `ProposalFinalized` | Emergency Cancel | `cancel_proposal` | `test_cancel_defeated_proposal_fails`, `test_cancel_executed_proposal_fails`, `test_cancel_already_cancelled_fails` | VERIFIED |
 | 10 | Example-target constructor stores manager at deploy time, cannot be front-run | Step 3 | `example-target::__constructor` | `test_real_example_target_deployed_with_contract_manager_without_mock_auths` | VERIFIED |
 
@@ -122,8 +122,9 @@ that implements it and the test that verifies it.
 | 26 | TTL extended on read for proposals | governance.rs `load_proposal` | `load_proposal` calls `extend_ttl` | `test_ttl_extended_on_write_and_read` | VERIFIED |
 | 27 | `next_proposal_id` uses checked arithmetic returning `Overflow` | governance.rs `next_proposal_id` | `next_proposal_id` uses `checked_add` | N/A (overflow not reachable in normal operation; test would require u64 wrap) | REWORDED |
 | 28 | `example-target::__constructor` stores manager at deploy time; cannot be front-run | example-target lib.rs | `__constructor` sets manager in instance storage | `test_real_example_target_deployed_with_contract_manager_without_mock_auths` | VERIFIED |
-| 29 | `example-target::upgrade` calls `manager.require_auth()` before `update_current_contract_wasm` | example-target lib.rs | `upgrade` calls `manager.require_auth()` then `update_current_contract_wasm` | `test_governance_upgrade_executed_through_manager` (under mock_all_auths) | VERIFIED |
+| 29 | `example-target::upgrade` calls `manager.require_auth()` before `update_current_contract_wasm` (exercised only under mock_all_auths; does not prove real-world rejection of non-manager callers) | example-target lib.rs | `upgrade` calls `manager.require_auth()` then `update_current_contract_wasm` | `test_governance_upgrade_executed_through_manager` (under mock_all_auths) | REWORDED |
 | 30 | `example-target::version` returns 1 without `v2` feature, 2 with `v2` | example-target lib.rs | `version` uses `#[cfg(feature = "v2")]` | N/A (compile-time feature; not testable in single env) | REWORDED |
+| 31 | `upgrade()` rejects callers that are not the manager | example-target lib.rs | `upgrade` calls `manager.require_auth()` | `test_real_example_target_upgrade_rejects_non_manager` | VERIFIED |
 
 ---
 

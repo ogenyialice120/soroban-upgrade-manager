@@ -515,3 +515,21 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 **Why:** Make the repository honest about what is proven (no false v1→v2 WASM upgrade claim, no VERIFIED claims with N/A tests), make it actually deployable (contract manager can be stored without signing), and make the Rust toolchain consistent across all configuration files.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 67 passed, 0 failed.
+
+## 2026-10-30 — fix/claims-and-docs-final
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_real_example_target_upgrade_rejects_non_manager`, which deploys the real `example-target` with a contract address as manager WITHOUT `mock_all_auths` and asserts `try_upgrade(any_hash)` is an error.
+
+**docs/claims-audit.md** — Changed walkthrough rows 4, 6 and 8 and doc-comment row 29 from VERIFIED to REWORDED with wording describing what the cited test actually proves. Added row 31 marking `upgrade()` rejects callers that are not the manager as VERIFIED using the new test.
+
+**CONTRIBUTING.md** — Changed Rust prerequisite from "Latest stable" to "1.88.0 (as pinned in rust-toolchain.toml)".
+
+**.gitignore** — Replaced comment "# Kiro AI specs (not committed)" with "# Local editor specs (not committed)"; kept `.kiro/`.
+
+**scripts/build_fixtures.sh** — Reworded toolchain comment to state only that WASMs are built with the pinned 1.88.0 toolchain for consistency; removed unverified compatibility claim. Added note that committed fixtures were not verified to upload in the test host.
+
+**Why:** Make the claims audit honest about what tests prove without `mock_all_auths`, add a real no-mock test for manager auth rejection, and align docs/config with the pinned Rust 1.88.0 toolchain.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `bash scripts/check_claims.sh` → OK.

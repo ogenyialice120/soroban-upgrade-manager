@@ -4,5 +4,5 @@ target/
 # Soroban test snapshots (generated, not committed)
 test_snapshots/
 
-# Kiro AI specs (not committed)
+# Local editor specs (not committed)
 .kiro/

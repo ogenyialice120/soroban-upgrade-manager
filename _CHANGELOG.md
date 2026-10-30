@@ -578,3 +578,16 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 New fixtures can now be uploaded in the test host via `upload_contract_wasm` (verified by a temporary test: both v1 and v2 uploaded successfully). No test changes were made; a real v1-to-v2 upgrade test may now be possible as a follow-up.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed; `bash scripts/check_claims.sh` → OK; `cargo build --release --target wasm32v1-none --manifest-path contracts/upgrade-manager/Cargo.toml` succeeded. `sha256sum -c SHA256SUMS` → all OK. `grep -rn "wasm32-unknown-unknown"` (excluding `_CHANGELOG.md` and `target/`) found only the README warning.
+## 2026-10-30 — test/real-wasm-upgrade
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_real_wasm_upgrade_v1_to_v2_through_manager`, which registers the real `target_v1.wasm`, asserts `version() == 1`, uploads `target_v2.wasm`, runs initialize/propose/vote/finalize/execute, and asserts `version() == 2` and status `Executed`.
+
+**docs/claims-audit.md** — Added row 32 for a real v1→v2 WASM upgrade. Updated rows 7, 15, 27, 40, walkthrough row 8 and doc-comment row 29 to VERIFIED where the new test supports the wording.
+
+**README.md** — Added one sentence to the testnet section noting the manual run is now also covered by an automated test.
+
+**Why:** No test could previously prove that a target's WASM is actually replaced. The new test proves a governance proposal can upgrade a real target from v1 to v2 through the manager; it does not prove sybil resistance, auditability beyond the recorded run, or behavior of arbitrary WASM.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 69 passed, 0 failed; `bash scripts/check_claims.sh` → OK.

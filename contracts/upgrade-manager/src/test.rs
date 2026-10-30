@@ -1476,4 +1476,74 @@ mod tests {
             "proposal must remain Queued after a failed target upgrade"
         );
     }
+    /// Real v1→v2 WASM upgrade through the manager using the committed fixture WASMs.
+    ///
+    /// Registers the real `target_v1.wasm`, asserts `version() == 1`, uploads
+    /// `target_v2.wasm`, runs the full governance flow, calls `execute`, and
+    /// asserts `version() == 2` and the proposal status is `Executed`.
+    #[test]
+    fn test_real_wasm_upgrade_v1_to_v2_through_manager() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let manager_id = env.register(UpgradeManager, ());
+        let manager = UpgradeManagerClient::new(&env, &manager_id);
+        let admin = Address::generate(&env);
+        manager.initialize(&admin, &20u32, &20u32, &1u32, &51u32);
+
+        let v1_bytes = include_bytes!("../tests/fixtures/target_v1.wasm");
+        let target_id = env.register(v1_bytes.as_slice(), (manager_id.clone(),));
+
+        let version_sym = Symbol::new(&env, "version");
+        let v1: u32 = env.invoke_contract(&target_id, &version_sym, soroban_sdk::vec![&env]);
+        assert_eq!(v1, 1u32, "target must report version 1 before upgrade");
+
+        let v2_bytes = include_bytes!("../tests/fixtures/target_v2.wasm");
+        let v2_hash = env
+            .deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::from_slice(&env, v2_bytes));
+
+        let id = manager.propose_upgrade(
+            &admin,
+            &target_id,
+            &v2_hash,
+            &desc(&env, "upgrade target to v2"),
+        );
+        manager.vote(&Address::generate(&env), &id, &true);
+
+        const BUMP: u32 = 50_000;
+        env.as_contract(&manager_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+        });
+        env.as_contract(&target_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 21);
+
+        assert_eq!(manager.finalize(&id), ProposalStatus::Queued);
+
+        env.as_contract(&manager_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+        });
+        env.as_contract(&target_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 21);
+
+        manager.execute(&id);
+
+        let v2: u32 = env.invoke_contract(&target_id, &version_sym, soroban_sdk::vec![&env]);
+        assert_eq!(v2, 2u32, "target must report version 2 after upgrade");
+        assert_eq!(
+            manager.get_proposal(&id).status,
+            ProposalStatus::Executed,
+            "proposal must be Executed"
+        );
+    }
 } // end mod tests

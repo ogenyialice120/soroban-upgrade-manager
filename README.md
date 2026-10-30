@@ -130,10 +130,10 @@ git clone https://github.com/ogenyialice120/soroban-upgrade-manager.git
 cd soroban-upgrade-manager
 
 # Add the Wasm target
-rustup target add wasm32-unknown-unknown
+rustup target add wasm32v1-none
 
 # Build
-cargo build --target wasm32-unknown-unknown --release \
+cargo build --target wasm32v1-none --release \
   --manifest-path contracts/upgrade-manager/Cargo.toml
 ```
 
@@ -157,10 +157,121 @@ stellar keys fund alice --network testnet
 
 # Deploy
 stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm \
+  --wasm target/wasm32v1-none/release/soroban_upgrade_manager.wasm \
   --source alice \
   --network testnet
 ```
+
+---
+## Verified on Stellar testnet
+
+On 2026-10-30 the contracts were deployed to Stellar testnet and a full governance upgrade was run by hand: a proposal upgraded a live example-target contract from version 1 to version 2 through the manager. This was a one-off manual run by a single account acting as admin, proposer and voter. It shows the mechanism works on a real network. It is not an automated test, and it does not make voting sybil-resistant (see Security model & limitations).
+
+### Parameters used
+
+- voting_period: 20
+- timelock_delay: 20
+- quorum: 1
+- approval_threshold_pct: 51
+- (ledgers are about 5 seconds each)
+
+### Results
+
+| Network | Item | Value |
+|---|---|---|
+| Stellar testnet | Admin account | `GBTKMKD6D3SB7LB5B4F2SO64B5GF2SROGK4LYGTNDARFB2WEJDMETWXI` |
+| Stellar testnet | Upgrade manager contract | `CCSOYARHTTTE6I5WT27EHGQEHZZMNI6KNT6SCTWDYIK6TDJ3HA3RLYDW` |
+| Stellar testnet | Manager WASM hash | `d4696206a5ba03d4326fea8da1f3e2ca5b693fe632a6dd8d459683dc994b25cd` |
+| Stellar testnet | Example target contract | `CBIV5DVEAKHGS3KQMBJB6J4KPQIVOHKNFE2IDS7UADHWNBST466MKBWQ` |
+| Stellar testnet | Target v1 WASM hash | `34fd6d1838f2d7d167500fe480061b5cd915b59320e2bdde5b433dde1aaec81f` |
+| Stellar testnet | v2 WASM hash used in the proposal | `847f384de0399e007643b51c7b4b421e29a9e5f28f8b53f320593fbbee2d1f3c` |
+| Stellar testnet | Final `version()` of the target | 2 (it returned 1 before the upgrade) |
+
+### Transactions
+
+| Step | Transaction |
+|---|---|
+| Upload manager WASM | [3a1862a30f6480b57520c7e13ab9101cfcd5953e15567d61b0b9b198c9014397](https://stellar.expert/explorer/testnet/tx/3a1862a30f6480b57520c7e13ab9101cfcd5953e15567d61b0b9b198c9014397) |
+| Deploy manager | [606613e98d557ed19a081c2891853652faa8e7cff28f04208a7b646d13e67115](https://stellar.expert/explorer/testnet/tx/606613e98d557ed19a081c2891853652faa8e7cff28f04208a7b646d13e67115) |
+| Upload example-target v1 WASM | [6d4f40b948bee5583fbde53ec6ff55d27a091d2233996bd32e9bb70b190dd1b5](https://stellar.expert/explorer/testnet/tx/6d4f40b948bee5583fbde53ec6ff55d27a091d2233996bd32e9bb70b190dd1b5) |
+| Deploy example-target (constructor given the manager contract address) | [da63efc75d30179321c24602cd7d7b22942d97026a605bb3e99a965111c3cbf4](https://stellar.expert/explorer/testnet/tx/da63efc75d30179321c24602cd7d7b22942d97026a605bb3e99a965111c3cbf4) |
+| initialize | [e40a2e352db4e91ed9d4616e6bc8818c629c7b9a88a53561338fc1fa84d416d2](https://stellar.expert/explorer/testnet/tx/e40a2e352db4e91ed9d4616e6bc8818c629c7b9a88a53561338fc1fa84d416d2) |
+| propose_upgrade (proposal id 0) | [d0b54188fcdd1fac7a709b3712b22578cd2da052a825457af8d3c3cadcd54b60](https://stellar.expert/explorer/testnet/tx/d0b54188fcdd1fac7a709b3712b22578cd2da052a825457af8d3c3cadcd54b60) |
+| vote (yes) | [a68cd50f5df5c46889dd8039d35836cb20961fb293f0122e212251e7ea7c96ea](https://stellar.expert/explorer/testnet/tx/a68cd50f5df5c46889dd8039d35836cb20961fb293f0122e212251e7ea7c96ea) |
+| finalize (result Queued) | [478ce2d98566fa68aa852eaac29289fde832766306fd5b396cf7784673b43b14](https://stellar.expert/explorer/testnet/tx/478ce2d98566fa68aa852eaac29289fde832766306fd5b396cf7784673b43b14) |
+| execute | [3184bc0713e1e083c4636c413625811f2df399c4ab41e4423c039d920d4d99ca](https://stellar.expert/explorer/testnet/tx/3184bc0713e1e083c4636c413625811f2df399c4ab41e4423c039d920d4d99ca) |
+
+The v2 upload transaction hash was not recorded.
+
+### How to reproduce this run
+
+1. Install the Stellar CLI with the official script:
+   ```bash
+   curl -fsSL https://github.com/stellar/stellar-cli/raw/main/install.sh | sh
+   ```
+   Note that `cargo install stellar-cli` can run out of memory in small environments and needs a newer Rust than this repo pins.
+
+2. Add the build target:
+   ```bash
+   rustup target add wasm32v1-none
+   ```
+
+3. Build both contracts:
+   ```bash
+   cargo build --release --target wasm32v1-none --manifest-path contracts/upgrade-manager/Cargo.toml
+   cargo build --release --target wasm32v1-none --manifest-path contracts/example-target/Cargo.toml
+   ```
+   Output is in `target/wasm32v1-none/release/`. Warning: builds with `wasm32-unknown-unknown` on Rust 1.82+ are rejected by the network with "reference-types not enabled".
+
+4. Create and fund a test account:
+   ```bash
+   stellar keys generate alice --network testnet
+   stellar keys fund alice --network testnet
+   ```
+
+5. Deploy the manager into a shell variable `MANAGER_ID`:
+   ```bash
+   MANAGER_ID=$(stellar contract deploy --wasm target/wasm32v1-none/release/soroban_upgrade_manager.wasm --source alice --network testnet)
+   ```
+
+6. Deploy the target into `TARGET_ID`:
+   ```bash
+   TARGET_ID=$(stellar contract deploy --wasm target/wasm32v1-none/release/example_target.wasm --source alice --network testnet -- --manager "$MANAGER_ID")
+   ```
+7. Initialize and check:
+   ```bash
+   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- initialize --admin alice --voting_period 20 --timelock_delay 20 --quorum 1 --approval_threshold_pct 51
+   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- get_config
+   stellar contract invoke --id "$TARGET_ID" --source alice --network testnet -- version
+   ```
+   The last command prints `1`.
+
+8. Build v2 and upload it:
+   ```bash
+   cargo build --release --target wasm32v1-none --manifest-path contracts/example-target/Cargo.toml --features v2
+   V2_HASH=$(stellar contract upload --wasm target/wasm32v1-none/release/example_target.wasm --source alice --network testnet)
+   ```
+
+9. Propose and vote:
+   ```bash
+   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- propose_upgrade --proposer alice --target "$TARGET_ID" --new_wasm_hash "$V2_HASH" --description "upgrade target to v2"
+   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- vote --voter alice --proposal_id 0 --approve true
+   ```
+
+10. Wait about 2 minutes (voting period is 20 ledgers), then finalize:
+    ```bash
+    stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- finalize --proposal_id 0
+    ```
+    This prints `Queued`.
+
+11. Wait about 2 more minutes (timelock is 20 ledgers after finalize), then execute and check version:
+    ```bash
+    stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- execute --proposal_id 0
+    stellar contract invoke --id "$TARGET_ID" --source alice --network testnet -- version
+    ```
+    The last command prints `2`.
+
+The contract IDs above are testnet contracts and may be reset when the testnet is reset, so the links may stop working in the future.
 
 ---
 

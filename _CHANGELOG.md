@@ -533,3 +533,16 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 **Why:** Make the claims audit honest about what tests prove without `mock_all_auths`, add a real no-mock test for manager auth rejection, and align docs/config with the pinned Rust 1.88.0 toolchain.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `bash scripts/check_claims.sh` → OK.
+## 2026-10-30 — ci/fix-fixture-drift-check
+
+### Changes
+
+**.github/workflows/ci.yml** — Replaced "Rebuild fixtures and verify drift" step with "Verify committed fixtures match SHA256SUMS", running `cd contracts/upgrade-manager/tests/fixtures && sha256sum -c SHA256SUMS`.
+
+**scripts/build_fixtures.sh** — Added note that CI only verifies committed fixtures match SHA256SUMS and that rebuilding on another machine may produce different bytes.
+
+**contracts/upgrade-manager/src/test.rs** — Updated fixture comment from "drift detection" to "checksum verification".
+
+**Why:** WASM builds are not byte-identical across machines because build paths are embedded, so the old rebuild-and-git-diff check failed on GitHub runners. CI now only checks that committed fixtures match their recorded checksums.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `sha256sum -c SHA256SUMS` → all OK. Other CI steps reviewed; no additional runner-breaking issues found.

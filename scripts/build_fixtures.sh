@@ -20,7 +20,11 @@
 #
 # NOTE: The committed fixtures were not verified to upload in the test host.
 #
-# Requirements: cargo, rustup with 1.88.0 toolchain installed.
+# NOTE: CI does not rebuild fixtures. It only verifies that the committed
+# fixtures match SHA256SUMS. Rebuilding on another machine may produce
+# different bytes (build paths are embedded), so a checksum match is the
+# only check performed in CI.
+#
 #   rustup install 1.88.0
 #   rustup target add wasm32-unknown-unknown --toolchain 1.88.0
 

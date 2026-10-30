@@ -1202,7 +1202,7 @@ mod tests {
     ///
     /// **About the fixture WASMs:** target_v1.wasm and target_v2.wasm are built
     /// by scripts/build_fixtures.sh and committed to tests/fixtures/ with
-    /// SHA256SUMS for drift detection. They cannot be uploaded via
+    /// SHA256SUMS for checksum verification. They cannot be uploaded via
     /// upload_contract_wasm() in this test because soroban-wasmi 0.31.1 (used
     /// by soroban-env-host 22.1.3) rejects call_indirect instructions whose
     /// table-index byte is LEB128-encoded (Rust ≥ 1.85.0 emits multi-byte zeros

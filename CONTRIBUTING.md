@@ -19,7 +19,7 @@ By participating in this project, you agree to maintain a respectful, welcoming,
 To contribute code to this repository, you will need to set up your local development environment.
 
 ### Prerequisites
-* **Rust**: Latest stable — https://rustup.rs/
+* **Rust**: 1.88.0 (as pinned in rust-toolchain.toml) — https://rustup.rs/
 * **Stellar CLI**: Version v22+
 * **Target**: `wasm32-unknown-unknown` installed via rustup
 

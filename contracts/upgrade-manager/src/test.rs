@@ -1327,6 +1327,27 @@ mod tests {
         assert_eq!(target_client.version(), 1u32);
     }
 
+    /// Real `example-target` rejects `upgrade()` when the manager has not
+    /// authorized it, WITHOUT `mock_all_auths`.
+    ///
+    /// Deploys the real `example-target` with a contract address as manager and
+    /// calls `upgrade()` directly with an arbitrary hash. Because the caller is
+    /// not the stored manager (and no auth is provided), `manager.require_auth()`
+    /// inside `upgrade()` fails and `try_upgrade` returns an error.
+    #[test]
+    fn test_real_example_target_upgrade_rejects_non_manager() {
+        let env = Env::default();
+        // Intentionally NOT calling env.mock_all_auths().
+        let manager_id = env.register(UpgradeManager, ());
+        let target_id = env.register(ExampleTarget, (manager_id.clone(),));
+        let target_client = ExampleTargetClient::new(&env, &target_id);
+        let any_hash = BytesN::from_array(&env, &[0u8; 32]);
+        assert!(
+            target_client.try_upgrade(&any_hash).is_err(),
+            "upgrade() must fail when the manager has not authorized it"
+        );
+    }
+
     /// Double-execute fails with NotQueued on the second call.
     #[test]
     fn test_double_execute_fails() {

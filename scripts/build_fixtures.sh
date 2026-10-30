@@ -26,7 +26,7 @@
 # only check performed in CI.
 #
 #   rustup install 1.88.0
-#   rustup target add wasm32-unknown-unknown --toolchain 1.88.0
+#   rustup target add wasm32v1-none --toolchain 1.88.0
 
 set -euo pipefail
 
@@ -41,7 +41,7 @@ echo "[build_fixtures] Toolchain:    $TOOLCHAIN"
 
 # Ensure the toolchain and wasm32 target are available.
 rustup install 1.88.0 2>/dev/null || true
-rustup target add wasm32-unknown-unknown --toolchain 1.88.0 2>/dev/null || true
+rustup target add wasm32v1-none --toolchain 1.88.0 2>/dev/null || true
 
 mkdir -p "$FIXTURE_DIR"
 
@@ -49,11 +49,11 @@ mkdir -p "$FIXTURE_DIR"
 echo "[build_fixtures] Building v1 ..."
 cargo "$TOOLCHAIN" build \
   --manifest-path "$MANIFEST" \
-  --target wasm32-unknown-unknown \
+  --target wasm32v1-none \
   --release \
   2>&1
 
-cp "$REPO_ROOT/target/wasm32-unknown-unknown/release/example_target.wasm" \
+cp "$REPO_ROOT/target/wasm32v1-none/release/example_target.wasm" \
    "$FIXTURE_DIR/target_v1.wasm"
 echo "[build_fixtures] Wrote target_v1.wasm"
 
@@ -61,12 +61,12 @@ echo "[build_fixtures] Wrote target_v1.wasm"
 echo "[build_fixtures] Building v2 ..."
 cargo "$TOOLCHAIN" build \
   --manifest-path "$MANIFEST" \
-  --target wasm32-unknown-unknown \
+  --target wasm32v1-none \
   --release \
   --features v2 \
   2>&1
 
-cp "$REPO_ROOT/target/wasm32-unknown-unknown/release/example_target.wasm" \
+cp "$REPO_ROOT/target/wasm32v1-none/release/example_target.wasm" \
    "$FIXTURE_DIR/target_v2.wasm"
 echo "[build_fixtures] Wrote target_v2.wasm"
 

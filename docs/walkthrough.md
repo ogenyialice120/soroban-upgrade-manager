@@ -10,9 +10,9 @@ expiry, and execution.
 ## Prerequisites
 
 - Stellar CLI v22+ — https://developers.stellar.org/docs/tools/developer-tools/stellar-cli
-- Rust with `wasm32-unknown-unknown` target:
+- Rust with `wasm32v1-none` target:
   ```bash
-  rustup target add wasm32-unknown-unknown
+  rustup target add wasm32v1-none
   ```
 - A funded testnet account (steps below create and fund one automatically)
 
@@ -97,11 +97,11 @@ Stellar network. This produces a 32-byte hash that the proposal references.
 
 ```bash
 # Build the v2 target WASM (example-target with --features v2)
-cargo build --target wasm32-unknown-unknown --release \
+cargo build --target wasm32v1-none --release \
   --manifest-path contracts/example-target/Cargo.toml \
   --features v2
 
-V2_WASM_PATH="target/wasm32-unknown-unknown/release/example_target.wasm"
+V2_WASM_PATH="target/wasm32v1-none/release/example_target.wasm"
 
 # Upload the WASM to the network — this does NOT deploy a contract.
 # It registers the binary and returns the hash.
@@ -122,10 +122,10 @@ echo "Uploaded v2 WASM hash: $NEW_WASM_HASH"
 
 ```bash
 # Build the upgrade-manager WASM
-cargo build --target wasm32-unknown-unknown --release \
+cargo build --target wasm32v1-none --release \
   --manifest-path contracts/upgrade-manager/Cargo.toml
 
-MANAGER_WASM="target/wasm32-unknown-unknown/release/soroban_upgrade_manager.wasm"
+MANAGER_WASM="target/wasm32v1-none/release/soroban_upgrade_manager.wasm"
 
 MANAGER_ID=$(stellar contract deploy \
   --wasm "$MANAGER_WASM" \
@@ -150,10 +150,10 @@ use the bundled `example-target` contract, which has:
 
 ```bash
 # Build the v1 target WASM (no features)
-cargo build --target wasm32-unknown-unknown --release \
+cargo build --target wasm32v1-none --release \
   --manifest-path contracts/example-target/Cargo.toml
 
-TARGET_WASM="target/wasm32-unknown-unknown/release/example_target.wasm"
+TARGET_WASM="target/wasm32v1-none/release/example_target.wasm"
 
 # Deploy example-target, passing the manager address to the constructor.
 # The constructor stores the manager without requiring auth (the manager is a

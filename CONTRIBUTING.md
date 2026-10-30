@@ -21,7 +21,7 @@ To contribute code to this repository, you will need to set up your local develo
 ### Prerequisites
 * **Rust**: 1.88.0 (as pinned in rust-toolchain.toml) — https://rustup.rs/
 * **Stellar CLI**: Version v22+
-* **Target**: `wasm32-unknown-unknown` installed via rustup
+* **Target**: `wasm32v1-none` installed via rustup
 
 ### Step-by-Step Environment Preparation
 1. **Fork and clone** the repository:
@@ -31,11 +31,11 @@ To contribute code to this repository, you will need to set up your local develo
    ```
 2. **Add the WASM target** if you haven't already:
    ```bash
-   rustup target add wasm32-unknown-unknown
+   rustup target add wasm32v1-none
    ```
 3. **Verify the build** runs successfully:
    ```bash
-   cargo build --target wasm32-unknown-unknown --release --manifest-path contracts/upgrade-manager/Cargo.toml
+   cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml
    ```
 4. **Run the existing test suite** to ensure everything passes:
    ```bash
@@ -76,7 +76,7 @@ When you are ready to submit code:
 
 Before pushing the "Create Pull Request" button, double-check that your branch fulfills the following criteria:
 
-* [ ] The code compiles successfully for the `wasm32-unknown-unknown` target.
+* [ ] The code compiles successfully for the `wasm32v1-none` target.
 * [ ] `cargo fmt --all` passes.
 * [ ] `cargo clippy --workspace --all-targets -- -D warnings` passes.
 * [ ] All tests pass via `cargo test --workspace`.

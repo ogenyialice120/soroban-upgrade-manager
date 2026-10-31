@@ -165,7 +165,7 @@ stellar contract deploy \
 ---
 ## Verified on Stellar testnet
 
-On 2026-10-30 the contracts were deployed to Stellar testnet and a full governance upgrade was run by hand: a proposal upgraded a live example-target contract from version 1 to version 2 through the manager. This was a one-off manual run by a single account acting as admin, proposer and voter. It shows the mechanism works on a real network. It is not an automated test, and it does not make voting sybil-resistant (see Security model & limitations). This manual run is now also covered by an automated test (`test_real_wasm_upgrade_v1_to_v2_through_manager`).
+On 2026-10-30 the contracts were deployed to Stellar testnet and a full governance upgrade was run by hand: a proposal upgraded a live example-target contract from version 1 to version 2 through the manager. This was a one-off manual run by a single account acting as admin, proposer and voter. It shows the mechanism works on a real network. It is not an automated test, and it does not make voting sybil-resistant (see Security model & limitations). The manual run itself is not an automated test; the same v1-to-v2 upgrade is also covered by the automated test `test_real_wasm_upgrade_v1_to_v2_through_manager`, which uses mocked authorization.
 
 ### Parameters used
 

@@ -591,3 +591,15 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 **Why:** No test could previously prove that a target's WASM is actually replaced. The new test proves a governance proposal can upgrade a real target from v1 to v2 through the manager; it does not prove sybil resistance, auditability beyond the recorded run, or behavior of arbitrary WASM.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 69 passed, 0 failed; `bash scripts/check_claims.sh` → OK.
+
+## 2026-10-31 — docs/claims-wording-final
+
+### Changes
+
+**docs/claims-audit.md** — Rows that claim `upgrade()` authenticates / rejects non-manager callers now cite `test_real_example_target_upgrade_rejects_non_manager` instead of `test_real_wasm_upgrade_v1_to_v2_through_manager`: README security row 40, walkthrough row 8, and example-target row 29. `test_real_wasm_upgrade_v1_to_v2_through_manager` is retained only for the claims it actually proves (real WASM v1→v2 replacement: rows 7, 15, 27, 32).
+
+**README.md** — Fixed the testnet intro wording so it no longer contradicts itself: the manual run itself is not an automated test; the same v1-to-v2 upgrade is also covered by `test_real_wasm_upgrade_v1_to_v2_through_manager`, which uses mocked authorization.
+
+**Why:** The cited test did not prove the auth behavior because it uses `mock_all_auths`, so it cannot demonstrate that `upgrade()` rejects non-manager callers. The auth-rejection claim is instead backed by `test_real_example_target_upgrade_rejects_non_manager`, which runs without `mock_all_auths`.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 69 passed, 0 failed; `bash scripts/check_claims.sh` → OK.

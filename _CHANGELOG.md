@@ -628,19 +628,19 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes; `cargo build --target wasm32v1-none --release --manifest-path contracts/counter-target/Cargo.toml` succeeds. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
 
-## 2026-11-18 — feature/feature-add-target-example (PR #134)
+## 2026-11-18 — feature/bad-target-anti-example (PR #136)
 
 ### Changes
 
-**contracts/feature-add-target/Cargo.toml** — New file. Package `feature-add-target`, cdylib+rlib, depends on `soroban-sdk` workspace, dev-dependency `soroban-sdk/testutils`, `v2` feature flag.
+**contracts/bad-target/Cargo.toml** — New file. Package `bad-target`, cdylib+rlib, depends on `soroban-sdk` workspace, dev-dependency `soroban-sdk/testutils`.
 
-**contracts/feature-add-target/src/lib.rs** — New file. v1 provides `__constructor`, `version()` → 1, `get_manager()` and `upgrade()`. v2 (`--features v2`) adds `get_description()` → String and `version()` → 2. `upgrade()` calls `manager.require_auth()` before `update_current_contract_wasm()`. Test `test_get_description_only_after_upgrade` deploys v1, proves `get_description` is not found on v1 (function not found), upgrades to a runtime-built v2 WASM, then verifies `get_description()` works on v2.
+**contracts/bad-target/src/lib.rs** — New file. ANTI-EXAMPLE target contract whose `upgrade()` deliberately OMITS `manager.require_auth()` and calls `env.deployer().update_current_contract_wasm()` directly. Includes a prominent doc comment warning this is an anti-example that must not be copied. Test `test_anyone_can_upgrade_without_auth` deploys the contract WITHOUT `mock_all_auths()` and proves `try_upgrade(&hash)` succeeds for a non-manager caller, demonstrating the vulnerability.
 
-**Cargo.toml** — Added `contracts/feature-add-target` to workspace `members`.
+**Cargo.toml** — Added `contracts/bad-target` to workspace `members`.
 
 **_CHANGELOG.md** — This entry.
 
-**Why:** The existing example-target's v2 only changes the return value of `version()`. An example where v2 adds an entirely new function demonstrates that upgrades can add functionality, not just change existing behavior.
+**Why:** No example shows what happens when a target contract forgets to call `manager.require_auth()` in `upgrade()`. A documented anti-example with a passing test educates developers on why authentication is critical and contrasts with `test_real_example_target_upgrade_rejects_non_manager`, which shows the good target rejecting the same call.
 
 **BREAKING:** None.
 

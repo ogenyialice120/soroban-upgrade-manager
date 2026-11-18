@@ -1,0 +1,19 @@
+[package]
+name = "bad-target"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "ANTI-EXAMPLE: target contract that omits manager.require_auth() in upgrade(), demonstrating why authentication is critical."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0.11", features = ["testutils"] }
+
+[features]
+testutils = ["soroban-sdk/testutils"]

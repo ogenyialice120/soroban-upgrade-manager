@@ -627,3 +627,21 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 **BREAKING:** None.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes; `cargo build --target wasm32v1-none --release --manifest-path contracts/counter-target/Cargo.toml` succeeds. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
+
+## 2026-11-18 — feature/feature-add-target-example (PR #134)
+
+### Changes
+
+**contracts/feature-add-target/Cargo.toml** — New file. Package `feature-add-target`, cdylib+rlib, depends on `soroban-sdk` workspace, dev-dependency `soroban-sdk/testutils`, `v2` feature flag.
+
+**contracts/feature-add-target/src/lib.rs** — New file. v1 provides `__constructor`, `version()` → 1, `get_manager()` and `upgrade()`. v2 (`--features v2`) adds `get_description()` → String and `version()` → 2. `upgrade()` calls `manager.require_auth()` before `update_current_contract_wasm()`. Test `test_get_description_only_after_upgrade` deploys v1, proves `get_description` is not found on v1 (function not found), upgrades to a runtime-built v2 WASM, then verifies `get_description()` works on v2.
+
+**Cargo.toml** — Added `contracts/feature-add-target` to workspace `members`.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** The existing example-target's v2 only changes the return value of `version()`. An example where v2 adds an entirely new function demonstrates that upgrades can add functionality, not just change existing behavior.
+
+**BREAKING:** None.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)

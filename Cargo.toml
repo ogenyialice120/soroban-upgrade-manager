@@ -4,7 +4,7 @@ members = [
     "contracts/upgrade-manager",
     "contracts/example-target",
     "contracts/counter-target",
-    "contracts/triple-target",
+    "contracts/bad-target",
 ]
 
 [workspace.package]

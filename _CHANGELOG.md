@@ -628,23 +628,19 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes; `cargo build --target wasm32v1-none --release --manifest-path contracts/counter-target/Cargo.toml` succeeds. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
 
-## 2026-11-18 — feature/triple-target-sequential-upgrades (PR #137)
+## 2026-11-18 — feature/bad-target-anti-example (PR #136)
 
 ### Changes
 
-**contracts/triple-target/Cargo.toml** — New file. Package `triple-target`, cdylib+rlib, depends on `soroban-sdk` workspace, dev-dependency `soroban-sdk/testutils`, `v2` and `v3` feature flags.
+**contracts/bad-target/Cargo.toml** — New file. Package `bad-target`, cdylib+rlib, depends on `soroban-sdk` workspace, dev-dependency `soroban-sdk/testutils`.
 
-**contracts/triple-target/src/lib.rs** — New file. Target contract whose `version()` returns `1` (v1), `2` (`--features v2`), or `3` (`--features v3`). `upgrade()` calls `manager.require_auth()` then `env.deployer().update_current_contract_wasm(new_wasm_hash)`. Includes a doc comment explaining the contract is used to prove repeated upgrades preserve the manager relationship.
+**contracts/bad-target/src/lib.rs** — New file. ANTI-EXAMPLE target contract whose `upgrade()` deliberately OMITS `manager.require_auth()` and calls `env.deployer().update_current_contract_wasm()` directly. Includes a prominent doc comment warning this is an anti-example that must not be copied. Test `test_anyone_can_upgrade_without_auth` deploys the contract WITHOUT `mock_all_auths()` and proves `try_upgrade(&hash)` succeeds for a non-manager caller, demonstrating the vulnerability.
 
-**Cargo.toml** — Added `contracts/triple-target` to workspace `members`.
-
-**contracts/upgrade-manager/Cargo.toml** — Added `triple-target` as a dev-dependency so the new test can reference the `TripleTarget` type.
-
-**contracts/upgrade-manager/src/test.rs** — Added `test_triple_target_upgrade_v1_to_v2_to_v3_through_manager`, which deploys triple-target v1, upgrades to v2 then v3 through the manager (propose → vote → finalize → execute, twice, with TTL bumps), asserts `version()` becomes `2` then `3`, and asserts the manager relationship is preserved. Follows the `test_real_wasm_upgrade_v1_to_v2_through_manager` pattern.
+**Cargo.toml** — Added `contracts/bad-target` to workspace `members`.
 
 **_CHANGELOG.md** — This entry.
 
-**Why:** No example demonstrates upgrading a target contract twice in sequence (v1 → v2 → v3). This proves the upgrade mechanism works repeatedly and that each upgrade preserves the manager relationship.
+**Why:** No example shows what happens when a target contract forgets to call `manager.require_auth()` in `upgrade()`. A documented anti-example with a passing test educates developers on why authentication is critical and contrasts with `test_real_example_target_upgrade_rejects_non_manager`, which shows the good target rejecting the same call.
 
 **BREAKING:** None.
 

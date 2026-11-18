@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/upgrade-manager", "contracts/example-target"]
+members = ["contracts/upgrade-manager", "contracts/example-target", "contracts/token-target"]
 
 [workspace.package]
 rust-version = "1.88.0"

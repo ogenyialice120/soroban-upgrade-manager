@@ -1,0 +1,21 @@
+[package]
+name = "token-target"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Minimal token-balance target contract that survives a WASM upgrade, used as an example target for the Soroban Upgrade Manager."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0.11", features = ["testutils"] }
+
+[features]
+# Build with `--features v2` to get a contract that also exposes `transfer`.
+v2 = []
+testutils = ["soroban-sdk/testutils"]

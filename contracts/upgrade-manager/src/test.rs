@@ -103,6 +103,7 @@ mod no_upgrade_contract {
 mod tests {
     use crate::{UpgradeManager, UpgradeManagerClient};
     use example_target::{ExampleTarget, ExampleTargetClient};
+    use triple_target::{TripleTarget, TripleTargetClient};
     use soroban_sdk::{
         symbol_short,
         testutils::{Address as _, Events, Ledger},
@@ -1546,4 +1547,168 @@ mod tests {
             "proposal must be Executed"
         );
     }
+    /// Deploys triple-target v1, upgrades to v2 then v3 through the manager,
+    /// verifying the version changes each time and the manager relationship is
+    /// preserved across both upgrades.
+    ///
+    /// Follows the `test_real_wasm_upgrade_v1_to_v2_through_manager` pattern
+    /// twice: propose → vote → advance past voting → finalize → advance past
+    /// timelock → execute, with TTL bumps between ledger advances.
+    #[test]
+    fn test_triple_target_upgrade_v1_to_v2_to_v3_through_manager() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let manager_id = env.register(UpgradeManager, ());
+        let manager = UpgradeManagerClient::new(&env, &manager_id);
+        let admin = Address::generate(&env);
+        manager.initialize(&admin, &20u32, &20u32, &1u32, &51u32);
+
+        // Register the natively compiled v1 contract.
+        let target_id = env.register(TripleTarget, (manager_id.clone(),));
+        let client = TripleTargetClient::new(&env, &target_id);
+
+        let version_sym = Symbol::new(&env, "version");
+        let v1: u32 = env.invoke_contract(&target_id, &version_sym, soroban_sdk::vec![&env]);
+        assert_eq!(v1, 1u32, "target must report version 1 before upgrade");
+
+        // --- Upgrade 1: v1 -> v2 ---
+        let v2_hash = upload_triple_target_wasm(&env, &["v2"]);
+        run_triple_target_proposal_to_executed(
+            &env,
+            &manager_id,
+            &manager,
+            &admin,
+            &target_id,
+            &v2_hash,
+            "upgrade triple-target to v2",
+        );
+        let v2: u32 = env.invoke_contract(&target_id, &version_sym, soroban_sdk::vec![&env]);
+        assert_eq!(v2, 2u32, "target must report version 2 after first upgrade");
+
+        // --- Upgrade 2: v2 -> v3 ---
+        let v3_hash = upload_triple_target_wasm(&env, &["v3"]);
+        run_triple_target_proposal_to_executed(
+            &env,
+            &manager_id,
+            &manager,
+            &admin,
+            &target_id,
+            &v3_hash,
+            "upgrade triple-target to v3",
+        );
+        let v3: u32 = env.invoke_contract(&target_id, &version_sym, soroban_sdk::vec![&env]);
+        assert_eq!(v3, 3u32, "target must report version 3 after second upgrade");
+
+        // Manager relationship preserved across both upgrades.
+        assert_eq!(
+            client.get_manager(),
+            manager_id,
+            "manager relationship must be preserved across upgrades"
+        );
+    }
+
+    /// Builds triple-target with the given features at runtime and uploads the
+    /// WASM, returning its hash. Building at runtime keeps the test
+    /// self-contained and guarantees the upgraded WASM matches the current
+    /// feature-gated source. Requires the `wasm32v1-none` target.
+    fn upload_triple_target_wasm(env: &Env, features: &[&str]) -> BytesN<32> {
+        use std::path::PathBuf;
+
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set for host tests");
+        let triple_dir = PathBuf::from(&manifest_dir).join("..").join("triple-target");
+        let triple_manifest = triple_dir.join("Cargo.toml");
+
+        let mut args = vec![
+            "build",
+            "--manifest-path",
+            triple_manifest
+                .to_str()
+                .expect("manifest path is valid unicode"),
+            "--target",
+            "wasm32v1-none",
+            "--release",
+        ];
+        if !features.is_empty() {
+            args.push("--features");
+            args.extend_from_slice(features);
+        }
+
+        let status = std::process::Command::new("cargo")
+            .args(&args)
+            .status()
+            .expect("failed to execute cargo to build triple-target wasm");
+        assert!(
+            status.success(),
+            "`cargo build --target wasm32v1-none --release` for triple-target failed"
+        );
+
+        let wasm_path = triple_dir
+            .join("target")
+            .join("wasm32v1-none")
+            .join("release")
+            .join("triple_target.wasm");
+        let bytes = std::fs::read(&wasm_path).expect("failed to read the triple-target wasm file");
+        env.deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::from_slice(env, &bytes))
+    }
+
+    /// Runs a single proposal through propose → vote → finalize → execute,
+    /// advancing the ledger past the voting period and the timelock with TTL
+    /// bumps in between.
+    fn run_triple_target_proposal_to_executed(
+        env: &Env,
+        manager_id: &Address,
+        manager: &UpgradeManagerClient,
+        admin: &Address,
+        target_id: &Address,
+        new_wasm_hash: &BytesN<32>,
+        desc: &str,
+    ) {
+        let id = manager.propose_upgrade(
+            admin,
+            target_id,
+            new_wasm_hash,
+            &desc(env, desc),
+        );
+        manager.vote(admin, &id, &true);
+
+        const BUMP: u32 = 50_000;
+        const ADVANCE: u32 = 21; // past voting_period=20
+        bump_triple_target_ttls(env, manager_id, target_id, id, BUMP);
+        env.ledger().with_mut(|l| l.sequence_number += ADVANCE);
+        assert_eq!(manager.finalize(&id), ProposalStatus::Queued);
+
+        bump_triple_target_ttls(env, manager_id, target_id, id, BUMP);
+        env.ledger().with_mut(|l| l.sequence_number += ADVANCE); // past timelock_delay=20
+        manager.execute(&id);
+
+        assert_eq!(
+            manager.get_proposal(&id).status,
+            ProposalStatus::Executed,
+            "proposal must be Executed"
+        );
+    }
+
+    /// Bumps the manager instance + proposal persistent storage and the
+    /// target instance storage so they do not expire between ledger advances.
+    fn bump_triple_target_ttls(
+        env: &Env,
+        manager_id: &Address,
+        target_id: &Address,
+        proposal_id: u64,
+        bump: u32,
+    ) {
+        env.as_contract(manager_id, || {
+            env.storage().instance().extend_ttl(bump, bump);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(proposal_id), bump, bump);
+        });
+        env.as_contract(target_id, || {
+            env.storage().instance().extend_ttl(bump, bump);
+        });
+    }
+
 } // end mod tests

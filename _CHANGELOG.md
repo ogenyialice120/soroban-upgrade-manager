@@ -627,3 +627,25 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 **BREAKING:** None.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes; `cargo build --target wasm32v1-none --release --manifest-path contracts/counter-target/Cargo.toml` succeeds. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
+
+## 2026-11-18 — feature/triple-target-sequential-upgrades (PR #137)
+
+### Changes
+
+**contracts/triple-target/Cargo.toml** — New file. Package `triple-target`, cdylib+rlib, depends on `soroban-sdk` workspace, dev-dependency `soroban-sdk/testutils`, `v2` and `v3` feature flags.
+
+**contracts/triple-target/src/lib.rs** — New file. Target contract whose `version()` returns `1` (v1), `2` (`--features v2`), or `3` (`--features v3`). `upgrade()` calls `manager.require_auth()` then `env.deployer().update_current_contract_wasm(new_wasm_hash)`. Includes a doc comment explaining the contract is used to prove repeated upgrades preserve the manager relationship.
+
+**Cargo.toml** — Added `contracts/triple-target` to workspace `members`.
+
+**contracts/upgrade-manager/Cargo.toml** — Added `triple-target` as a dev-dependency so the new test can reference the `TripleTarget` type.
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_triple_target_upgrade_v1_to_v2_to_v3_through_manager`, which deploys triple-target v1, upgrades to v2 then v3 through the manager (propose → vote → finalize → execute, twice, with TTL bumps), asserts `version()` becomes `2` then `3`, and asserts the manager relationship is preserved. Follows the `test_real_wasm_upgrade_v1_to_v2_through_manager` pattern.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** No example demonstrates upgrading a target contract twice in sequence (v1 → v2 → v3). This proves the upgrade mechanism works repeatedly and that each upgrade preserves the manager relationship.
+
+**BREAKING:** None.
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)

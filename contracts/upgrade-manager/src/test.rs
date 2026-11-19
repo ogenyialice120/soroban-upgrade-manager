@@ -1802,4 +1802,164 @@ mod tests {
         assert_eq!(proposal.metadata_hash, zero_hash(&env));
     }
 
+    // -----------------------------------------------------------------------
+    // Delegation tests (issue #116)
+    // -----------------------------------------------------------------------
+
+    /// A voter can delegate their vote to another address.
+    #[test]
+    fn test_delegate_vote() {
+        let (env, admin, cid, client) = setup();
+        let voter = Address::generate(&env);
+        let delegate = Address::generate(&env);
+
+        client.delegate(&voter, &delegate);
+
+        let delegation = governance_delegation_load(&env, &voter);
+        assert_eq!(delegation, Some(delegate));
+    }
+
+    /// A delegated voter cannot vote directly (HasDelegated).
+    #[test]
+    fn test_delegated_voter_cannot_vote_directly() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let delegate = Address::generate(&env);
+
+        client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "P1"), &desc(&env, "desc"), &zero_hash(&env));
+        client.delegate(&voter, &delegate);
+
+        let id = 0u64;
+        let result = client.try_vote(&voter, &id, &true);
+        assert!(result.is_err(), "delegated voter cannot vote directly");
+    }
+
+    /// A delegate's vote carries the weight of 1 + number of delegators.
+    #[test]
+    fn test_delegate_vote_weight() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let delegate = Address::generate(&env);
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+
+        client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "P1"), &desc(&env, "desc"), &zero_hash(&env));
+        let id = 0u64;
+
+        client.delegate(&voter1, &delegate);
+        client.delegate(&voter2, &delegate);
+
+        client.vote(&delegate, &id, &true);
+
+        let proposal = client.get_proposal(&id);
+        assert_eq!(
+            proposal.yes_votes, 3,
+            "delegate vote weight must be 1 + 2 delegators = 3"
+        );
+    }
+
+    /// Cannot delegate to yourself.
+    #[test]
+    fn test_cannot_delegate_to_self() {
+        let (env, admin, _cid, client) = setup();
+        let voter = Address::generate(&env);
+
+        let result = client.try_delegate(&voter, &voter);
+        assert!(result.is_err(), "self-delegation must return CannotDelegateToSelf");
+    }
+
+    /// Cannot delegate to someone who has already delegated (no transitive delegation).
+    #[test]
+    fn test_no_transitive_delegation() {
+        let (env, admin, _cid, client) = setup();
+        let voter_a = Address::generate(&env);
+        let voter_b = Address::generate(&env);
+        let voter_c = Address::generate(&env);
+
+        client.delegate(&voter_a, &voter_b);
+        let result = client.try_delegate(&voter_c, &voter_b);
+        assert!(result.is_err(), "cannot delegate to a delegate");
+    }
+
+    /// A voter can revoke their delegation and vote directly.
+    #[test]
+    fn test_revoke_delegation() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let voter = Address::generate(&env);
+        let delegate = Address::generate(&env);
+
+        client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "P1"), &desc(&env, "desc"), &zero_hash(&env));
+        let id = 0u64;
+
+        client.delegate(&voter, &delegate);
+        client.revoke_delegation(&voter);
+        client.vote(&voter, &id, &true);
+
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.yes_votes, 1, "voter's direct vote must count after revoke");
+    }
+
+    /// Revoking delegation when not delegating returns NotDelegating.
+    #[test]
+    fn test_revoke_not_delegating() {
+        let (env, admin, _cid, client) = setup();
+        let voter = Address::generate(&env);
+
+        let result = client.try_revoke_delegation(&voter);
+        assert!(result.is_err(), "revoke without delegation must return NotDelegating");
+    }
+
+    /// Delegation does not solve sybil resistance: many addresses can delegate to one delegate.
+    #[test]
+    fn test_delegation_sybil_not_solved() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let delegate = Address::generate(&env);
+
+        client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "P1"), &desc(&env, "desc"), &zero_hash(&env));
+        let id = 0u64;
+
+        for _ in 0..10u32 {
+            let sybil = Address::generate(&env);
+            client.delegate(&sybil, &delegate);
+        }
+
+        client.vote(&delegate, &id, &true);
+
+        let proposal = client.get_proposal(&id);
+        assert_eq!(
+            proposal.yes_votes, 11,
+            "sybil addresses can all delegate to one delegate"
+        );
+    }
+
+    /// Delegation event is emitted when delegating.
+    #[test]
+    fn test_delegation_event_emitted() {
+        let (env, admin, _cid, client) = setup();
+        let voter = Address::generate(&env);
+        let delegate = Address::generate(&env);
+
+        client.delegate(&voter, &delegate);
+
+        assert!(
+            env.events().all().iter().any(|(_, topics, _)| {
+                topics.len() >= 2
+                    && topics[0] == symbol_short!("delegation").into_val(&env)
+                    && topics[1] == symbol_short!("delegated").into_val(&env)
+            }),
+            "delegation event must be emitted"
+        );
+    }
+
+}
+
+/// Helper to load a delegation from within the contract context.
+fn governance_delegation_load(env: &Env, voter: &Address) -> Option<Address> {
+    use crate::types::DataKey;
+    env.storage().persistent().get(&DataKey::Delegation(voter.clone()))
+}
+
 } // end mod tests

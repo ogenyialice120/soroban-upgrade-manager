@@ -25,7 +25,7 @@ mod governance;
 mod timelock;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
 
 use governance::{
     cancel_proposal, cast_vote, create_proposal, delegate, emit_admin_transferred,
@@ -314,6 +314,46 @@ impl UpgradeManager {
     /// - `ProposalNotFound` — unknown proposal ID.
     pub fn get_proposal(env: Env, proposal_id: u64) -> Result<Proposal, Error> {
         load_proposal(&env, proposal_id)
+    }
+
+    /// Return a paginated list of proposals starting at `offset`, up to `limit` entries.
+    ///
+    /// Proposals are returned in ascending ID order. If `offset` is greater than or
+    /// equal to the total proposal count, an empty vector is returned. If `limit` is 0,
+    /// an empty vector is returned. `limit` is capped at `MAX_PROPOSALS_PAGE_LIMIT` (50)
+    /// to bound gas costs.
+    ///
+    /// # Arguments
+    /// - `offset` — The starting proposal ID (inclusive).
+    /// - `limit`  — Maximum number of proposals to return (capped at 50).
+    ///
+    /// # Errors
+    /// - `NotInitialized` — contract has not been initialised.
+    pub fn get_proposals(env: Env, offset: u64, limit: u32) -> Result<Vec<Proposal>, Error> {
+        let count = env
+            .storage()
+            .instance()
+            .get::<u64>(&DataKey::ProposalCount)
+            .unwrap_or(0u64);
+
+        if offset >= count || limit == 0 {
+            return Ok(vec![&env]);
+        }
+
+        let limit = limit.min(MAX_PROPOSALS_PAGE_LIMIT);
+        let end = offset
+            .checked_add(limit as u64)
+            .unwrap_or(count)
+            .min(count);
+
+        let mut result = Vec::new(&env);
+        let mut id = offset;
+        while id < end {
+            result.push_back(load_proposal(&env, id)?);
+            id += 1;
+        }
+
+        Ok(result)
     }
 
     /// Return the current governance configuration.

@@ -35,6 +35,10 @@ pub const INSTANCE_TTL_BUMP: u32 = 518_400;
 /// 2_592_000 ledgers ≈ 150 days — long enough to outlive any realistic proposal.
 pub const PERSISTENT_TTL_BUMP: u32 = 2_592_000;
 
+/// Maximum number of proposals returned by `get_proposals` in a single call.
+/// Limits gas cost of reading multiple proposal entries from storage.
+pub const MAX_PROPOSALS_PAGE_LIMIT: u32 = 50;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------

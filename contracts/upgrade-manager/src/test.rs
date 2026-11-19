@@ -139,6 +139,10 @@ mod tests {
         String::from_str(env, s)
     }
 
+    fn title(env: &Env, s: &str) -> String {
+        String::from_str(env, s)
+    }
+
     /// Advance ledger 101 past voting_ends_at (voting_period=100).
     fn advance_past_voting(env: &Env, cid: &Address, proposal_id: u64) {
         const ADVANCE: u32 = 101;
@@ -318,7 +322,7 @@ mod tests {
         let proposer = Address::generate(&env);
         let target = Address::generate(&env);
         let result =
-            client.try_propose_upgrade(&proposer, &target, &zero_hash(&env), &desc(&env, "test"));
+            client.try_propose_upgrade(&proposer, &target, &zero_hash(&env), &title(&env, "test"), &desc(&env, "test"), &zero_hash(&env));
         assert!(result.is_err(), "propose_upgrade without auth must fail");
     }
 
@@ -338,7 +342,7 @@ mod tests {
     fn test_auth_cancel_non_admin_fails() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         let non_admin = Address::generate(&env);
         assert_eq!(
             client.try_cancel(&non_admin, &id),
@@ -411,7 +415,7 @@ mod tests {
     fn test_create_proposal() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         assert_eq!(id, 0u64);
         let p = client.get_proposal(&id);
         assert_eq!(p.status, ProposalStatus::Active);
@@ -425,7 +429,7 @@ mod tests {
         let target = Address::generate(&env);
         let long_desc = String::from_str(&env, &"a".repeat(257));
         assert_eq!(
-            client.try_propose_upgrade(&admin, &target, &zero_hash(&env), &long_desc),
+            client.try_propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "long description"), &long_desc, &zero_hash(&env)),
             Err(Ok(Error::DescriptionTooLong))
         );
     }
@@ -436,7 +440,7 @@ mod tests {
         let target = Address::generate(&env);
         let empty = String::from_str(&env, "");
         assert_eq!(
-            client.try_propose_upgrade(&admin, &target, &zero_hash(&env), &empty),
+            client.try_propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "empty description"), &empty, &zero_hash(&env)),
             Err(Ok(Error::EmptyDescription))
         );
     }
@@ -447,7 +451,7 @@ mod tests {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
         let max_desc = String::from_str(&env, &"a".repeat(256));
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &max_desc);
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "max description"), &max_desc, &zero_hash(&env));
         assert_eq!(id, 0u64);
     }
 
@@ -460,7 +464,7 @@ mod tests {
         let proposer = Address::generate(&env);
         let target = Address::generate(&env);
         assert_eq!(
-            client.try_propose_upgrade(&proposer, &target, &zero_hash(&env), &desc(&env, "v2")),
+            client.try_propose_upgrade(&proposer, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env)),
             Err(Ok(Error::NotInitialized))
         );
     }
@@ -471,7 +475,7 @@ mod tests {
     fn test_config_snapshot_isolation() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
 
         let p = client.get_proposal(&id);
         assert_eq!(p.snap_quorum, 3);
@@ -505,7 +509,7 @@ mod tests {
     fn test_vote_yes_no() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         client.vote(&Address::generate(&env), &id, &true);
         client.vote(&Address::generate(&env), &id, &true);
         client.vote(&Address::generate(&env), &id, &false);
@@ -518,7 +522,7 @@ mod tests {
     fn test_double_vote_fails() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         let voter = Address::generate(&env);
         client.vote(&voter, &id, &true);
         assert_eq!(
@@ -542,7 +546,7 @@ mod tests {
     fn test_vote_at_voting_ends_at_succeeds() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         const ADVANCE: u32 = 100; // exactly voting_ends_at
         const BUMP: u32 = ADVANCE + 30_000;
         env.as_contract(&cid, || {
@@ -560,7 +564,7 @@ mod tests {
     fn test_vote_after_voting_period_ends_fails() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         advance_past_voting(&env, &cid, id); // ledger=101, voting_ends_at=100
         assert_eq!(
             client.try_vote(&Address::generate(&env), &id, &true),
@@ -576,7 +580,7 @@ mod tests {
     fn test_finalize_before_voting_ends_fails() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -589,7 +593,7 @@ mod tests {
     fn test_finalize_at_voting_ends_at_fails() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -610,7 +614,7 @@ mod tests {
     fn test_finalize_at_voting_ends_at_plus_one_succeeds() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -628,7 +632,7 @@ mod tests {
         let admin = Address::generate(&env);
         client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -639,7 +643,7 @@ mod tests {
     fn test_finalize_passes_with_quorum() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -651,7 +655,7 @@ mod tests {
     fn test_finalize_defeated_without_quorum() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..2 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -664,7 +668,7 @@ mod tests {
     fn test_finalize_defeated_all_no_votes() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &false);
         }
@@ -677,7 +681,7 @@ mod tests {
     fn test_finalize_already_queued_fails() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -694,7 +698,7 @@ mod tests {
     fn test_cancel_by_admin() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         client.cancel(&admin, &id);
         assert_eq!(client.get_proposal(&id).status, ProposalStatus::Cancelled);
     }
@@ -704,7 +708,7 @@ mod tests {
     fn test_cancel_queued_proposal() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -718,7 +722,7 @@ mod tests {
     fn test_cancel_by_non_admin_fails() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         let non_admin = Address::generate(&env);
         assert_eq!(
             client.try_cancel(&non_admin, &id),
@@ -730,7 +734,7 @@ mod tests {
     fn test_cancel_already_cancelled_fails() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -748,7 +752,7 @@ mod tests {
     fn test_cancel_defeated_proposal_fails() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..2 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -779,7 +783,7 @@ mod tests {
             (manager_id.clone(),),
         );
 
-        let id = client.propose_upgrade(&admin, &target_id, &v2_hash, &desc(&env, "will execute"));
+        let id = client.propose_upgrade(&admin, &target_id, &v2_hash, &title(&env, "will execute"), &desc(&env, "will execute"), &zero_hash(&env));
         client.vote(&Address::generate(&env), &id, &true);
 
         const BUMP: u32 = 50_000;
@@ -823,7 +827,7 @@ mod tests {
     fn test_execute_fails_on_active_proposal() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         assert_eq!(client.try_execute(&id), Err(Ok(Error::NotQueued)));
     }
 
@@ -831,7 +835,7 @@ mod tests {
     fn test_execute_fails_on_defeated_proposal() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         client.vote(&Address::generate(&env), &id, &true);
         client.vote(&Address::generate(&env), &id, &true);
         advance_past_voting(&env, &cid, id);
@@ -843,7 +847,7 @@ mod tests {
     fn test_execute_fails_before_timelock() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -857,7 +861,7 @@ mod tests {
     fn test_execute_one_ledger_before_executable_at_fails() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -884,7 +888,7 @@ mod tests {
     fn test_time_until_executable() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         assert_eq!(client.time_until_executable(&id), 0u32); // not Queued yet
 
         for _ in 0..3 {
@@ -945,7 +949,7 @@ mod tests {
         client.transfer_admin(&admin, &new_admin);
         assert_eq!(client.get_admin(), new_admin);
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&new_admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&new_admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         assert_eq!(client.try_cancel(&admin, &id), Err(Ok(Error::Unauthorized)));
     }
 
@@ -962,7 +966,7 @@ mod tests {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
         let voter = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         client.vote(&voter, &id, &true);
 
         env.as_contract(&cid, || {
@@ -1020,7 +1024,7 @@ mod tests {
     fn test_event_proposal_created() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         assert!(
             count_events(&env, symbol_short!("proposal"), symbol_short!("created")) >= 1,
             "must have proposal_created event"
@@ -1032,7 +1036,7 @@ mod tests {
     fn test_event_vote_cast() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         client.vote(&Address::generate(&env), &id, &true);
         assert!(
             count_events(&env, symbol_short!("vote"), symbol_short!("cast")) >= 1,
@@ -1045,7 +1049,7 @@ mod tests {
     fn test_event_finalized() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -1061,7 +1065,7 @@ mod tests {
     fn test_event_cancelled() {
         let (env, admin, _cid, client) = setup();
         let target = Address::generate(&env);
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         client.cancel(&admin, &id);
         assert!(
             count_events(&env, symbol_short!("proposal"), symbol_short!("cancelled")) >= 1,
@@ -1121,7 +1125,9 @@ mod tests {
             &admin,
             &target_id,
             &new_hash,
+            &title(&env, "Integration test"),
             &String::from_str(&env, "Integration test"),
+            &zero_hash(&env),
         );
         for _ in 0..3 {
             manager.vote(&Address::generate(&env), &pid, &true);
@@ -1160,7 +1166,7 @@ mod tests {
     fn test_execute_fails_on_active_proposal_compat() {
         let (env, admin, _cid, client) = setup();
         let target = env.register(MockTarget, ());
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         assert_eq!(client.try_execute(&id), Err(Ok(Error::NotQueued)));
     }
 
@@ -1168,7 +1174,7 @@ mod tests {
     fn test_execute_fails_on_defeated_proposal_compat() {
         let (env, admin, cid, client) = setup();
         let target = env.register(MockTarget, ());
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         client.vote(&Address::generate(&env), &id, &true);
         client.vote(&Address::generate(&env), &id, &true);
         advance_past_voting(&env, &cid, id);
@@ -1180,7 +1186,7 @@ mod tests {
     fn test_execute_fails_before_timelock_compat() {
         let (env, admin, cid, client) = setup();
         let target = env.register(MockTarget, ());
-        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &desc(&env, "v2"));
+        let id = client.propose_upgrade(&admin, &target, &zero_hash(&env), &title(&env, "v2"), &desc(&env, "v2"), &zero_hash(&env));
         for _ in 0..3 {
             client.vote(&Address::generate(&env), &id, &true);
         }
@@ -1271,7 +1277,9 @@ mod tests {
             &admin,
             &target_id,
             &v2_hash,
+            &title(&env, "Upgrade example-target v1 to v2"),
             &String::from_str(&env, "Upgrade example-target v1 to v2"),
+            &zero_hash(&env),
         );
         for _ in 0..3 {
             manager.vote(&Address::generate(&env), &pid, &true);
@@ -1373,7 +1381,9 @@ mod tests {
             &admin,
             &target_id,
             &v2_hash,
+            &title(&env, "double-execute test"),
             &desc(&env, "double-execute test"),
+            &zero_hash(&env),
         );
         for _ in 0..3 {
             manager.vote(&Address::generate(&env), &id, &true);
@@ -1437,7 +1447,7 @@ mod tests {
             .deployer()
             .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
 
-        let id = manager.propose_upgrade(&admin, &bad_target, &v2_hash, &desc(&env, "will fail"));
+        let id = manager.propose_upgrade(&admin, &bad_target, &v2_hash, &title(&env, "will fail"), &desc(&env, "will fail"), &zero_hash(&env));
         manager.vote(&Address::generate(&env), &id, &true);
 
         const BUMP: u32 = 50_000;
@@ -1508,7 +1518,9 @@ mod tests {
             &admin,
             &target_id,
             &v2_hash,
+            &title(&env, "upgrade target to v2"),
             &desc(&env, "upgrade target to v2"),
+            &zero_hash(&env),
         );
         manager.vote(&Address::generate(&env), &id, &true);
 
@@ -1670,7 +1682,9 @@ mod tests {
             admin,
             target_id,
             new_wasm_hash,
+            &title(env, desc),
             &desc(env, desc),
+            &zero_hash(&env),
         );
         manager.vote(admin, &id, &true);
 
@@ -1712,115 +1726,80 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // get_proposals pagination tests
+    // Metadata tests (issue #123)
     // -----------------------------------------------------------------------
 
-    /// get_proposals returns the first page of proposals starting from offset 0.
+    /// propose_upgrade with an empty title returns EmptyTitle.
     #[test]
-    fn test_get_proposals_first_page() {
+    fn test_propose_empty_title() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let hash = zero_hash(&env);
-
-        // Create 3 proposals.
-        let id0 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
-        let id1 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 1"));
-        let id2 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 2"));
-
-        let page = client.get_proposals(&0u64, &2u32);
-        assert_eq!(page.len(), 2, "first page must return 2 proposals");
-        assert_eq!(page[0].id, id0, "first proposal must be id0");
-        assert_eq!(page[1].id, id1, "second proposal must be id1");
-    }
-
-    /// get_proposals returns proposals starting at the given offset.
-    #[test]
-    fn test_get_proposals_offset() {
-        let (env, admin, cid, client) = setup();
-        let target = Address::generate(&env);
-        let hash = zero_hash(&env);
-
-        let _id0 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
-        let id1 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 1"));
-        let id2 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 2"));
-
-        let page = client.get_proposals(&1u64, &2u32);
-        assert_eq!(page.len(), 2, "offset page must return 2 proposals");
-        assert_eq!(page[0].id, id1, "first proposal at offset 1 must be id1");
-        assert_eq!(page[1].id, id2, "second proposal at offset 1 must be id2");
-    }
-
-    /// get_proposals returns an empty vec when offset >= proposal count.
-    #[test]
-    fn test_get_proposals_offset_beyond_count() {
-        let (env, admin, cid, client) = setup();
-        let target = Address::generate(&env);
-        let hash = zero_hash(&env);
-
-        client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
-
-        let page = client.get_proposals(&5u64, &10u32);
-        assert!(page.is_empty(), "offset beyond count must return empty vec");
-    }
-
-    /// get_proposals returns an empty vec when limit is 0.
-    #[test]
-    fn test_get_proposals_zero_limit() {
-        let (env, admin, cid, client) = setup();
-        let target = Address::generate(&env);
-        let hash = zero_hash(&env);
-
-        client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
-
-        let page = client.get_proposals(&0u64, &0u32);
-        assert!(page.is_empty(), "limit 0 must return empty vec");
-    }
-
-    /// get_proposals caps the limit at MAX_PROPOSALS_PAGE_LIMIT.
-    #[test]
-    fn test_get_proposals_limit_capped() {
-        let (env, admin, cid, client) = setup();
-        let target = Address::generate(&env);
-        let hash = zero_hash(&env);
-
-        // Create 60 proposals.
-        for i in 0..60u32 {
-            client.propose_upgrade(&admin, &target, &hash, &desc(&env, &format!("proposal {}", i)));
-        }
-
-        let page = client.get_proposals(&0u64, &100u32);
-        assert!(
-            page.len() <= 50,
-            "page length must not exceed MAX_PROPOSALS_PAGE_LIMIT (50), got {}",
-            page.len()
+        let result = client.try_propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, ""),
+            &desc(&env, "valid description"),
+            &zero_hash(&env),
         );
+        assert!(result.is_err(), "empty title must return EmptyTitle");
     }
 
-    /// get_proposals returns proposals in ascending ID order.
+    /// propose_upgrade with a title longer than 128 bytes returns TitleTooLong.
     #[test]
-    fn test_get_proposals_ordered_by_id() {
+    fn test_propose_title_too_long() {
         let (env, admin, cid, client) = setup();
         let target = Address::generate(&env);
-        let hash = zero_hash(&env);
-
-        let id0 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "first"));
-        let id1 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "second"));
-        let id2 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "third"));
-
-        let page = client.get_proposals(&0u64, &10u32);
-        assert_eq!(page.len(), 3);
-        assert_eq!(page[0].id, id0);
-        assert_eq!(page[1].id, id1);
-        assert_eq!(page[2].id, id2);
-        assert!(page[0].id < page[1].id && page[1].id < page[2].id, "proposals must be ordered by ID");
+        let long_title = String::from_str(&env, &"a".repeat(129));
+        let result = client.try_propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &long_title,
+            &desc(&env, "valid description"),
+            &zero_hash(&env),
+        );
+        assert!(result.is_err(), "title > 128 bytes must return TitleTooLong");
     }
 
-    /// get_proposals on a contract with no proposals returns an empty vec.
+    /// get_proposal returns the title and metadata_hash set at creation.
     #[test]
-    fn test_get_proposals_no_proposals() {
+    fn test_proposal_metadata_stored() {
         let (env, admin, cid, client) = setup();
-        let page = client.get_proposals(&0u64, &10u32);
-        assert!(page.is_empty(), "no proposals must return empty vec");
+        let target = Address::generate(&env);
+        let meta_hash = BytesN::from_array(&env, &[42u8; 32]);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "Upgrade to v2"),
+            &desc(&env, "Upgrade the target contract to version 2"),
+            &meta_hash,
+        );
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.title, title(&env, "Upgrade to v2"));
+        assert_eq!(
+            proposal.description,
+            desc(&env, "Upgrade the target contract to version 2")
+        );
+        assert_eq!(proposal.metadata_hash, meta_hash);
+    }
+
+    /// Zero metadata_hash is accepted (no off-chain metadata).
+    #[test]
+    fn test_proposal_zero_metadata_hash() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "No metadata"),
+            &desc(&env, "Proposal without off-chain metadata"),
+            &zero_hash(&env),
+        );
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.metadata_hash, zero_hash(&env));
     }
 
 } // end mod tests

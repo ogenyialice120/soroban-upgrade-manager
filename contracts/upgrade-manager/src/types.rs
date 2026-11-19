@@ -106,8 +106,13 @@ pub struct Proposal {
     pub status: ProposalStatus,
     /// Address that created the proposal.
     pub proposer: Address,
+    /// Short human-readable title (min 1 char, max 128 bytes).
+    pub title: soroban_sdk::String,
     /// Human-readable description (min 1 char, max 256 bytes).
     pub description: soroban_sdk::String,
+    /// SHA-256 hash of off-chain proposal metadata (title, changelog URI,
+    /// compatibility report hash, etc.). All zeros if no off-chain metadata.
+    pub metadata_hash: BytesN<32>,
     // --- Snapshotted governance rules (set at creation, never changed) ---
     /// Snapshot of Config.voting_period at creation time.
     pub snap_voting_period: u32,
@@ -166,4 +171,8 @@ pub enum Error {
     EmptyDescription = 18,
     /// voting_period must be at least 1 ledger.
     InvalidVotingPeriod = 19,
+    /// Title must not be empty.
+    EmptyTitle = 20,
+    /// Provided title exceeds the 128-byte limit.
+    TitleTooLong = 21,
 }

@@ -162,6 +162,8 @@ pub fn record_vote(env: &Env, proposal_id: u64, voter: &Address) {
 ///
 /// # Errors
 /// - `NotInitialized`   if the contract is not yet initialised.
+/// - `EmptyTitle`       if `title` is empty.
+/// - `TitleTooLong`     if `title` > 128 bytes.
 /// - `EmptyDescription` if `description` is empty.
 /// - `DescriptionTooLong` if `description` > 256 bytes.
 /// - `Overflow`         if ledger arithmetic overflows.
@@ -170,8 +172,18 @@ pub fn create_proposal(
     proposer: Address,
     target: Address,
     new_wasm_hash: BytesN<32>,
+    title: String,
     description: String,
+    metadata_hash: BytesN<32>,
 ) -> Result<u64, Error> {
+    // Validate title (1-128 bytes).
+    if title.is_empty() {
+        return Err(Error::EmptyTitle);
+    }
+    if title.len() > 128 {
+        return Err(Error::TitleTooLong);
+    }
+
     // Validate description length (Soroban String::len returns u32 bytes).
     if description.is_empty() {
         return Err(Error::EmptyDescription);
@@ -201,7 +213,9 @@ pub fn create_proposal(
         no_votes: 0,
         status: ProposalStatus::Active,
         proposer: proposer.clone(),
+        title: title.clone(),
         description: description.clone(),
+        metadata_hash,
         snap_voting_period: config.voting_period,
         snap_timelock_delay: config.timelock_delay,
         snap_quorum: config.quorum,

@@ -158,13 +158,17 @@ impl UpgradeManager {
     /// - `proposer`       — Address creating the proposal (must sign).
     /// - `target`         — Contract address to be upgraded.
     /// - `new_wasm_hash`  — Hash of the already-uploaded WASM binary.
+    /// - `title`          — Short title (1–128 bytes).
     /// - `description`    — Human-readable description (1–256 bytes).
+    /// - `metadata_hash`  — SHA-256 hash of off-chain metadata (all zeros if none).
     ///
     /// # Returns
     /// The new proposal ID (starts at 0, increments by 1).
     ///
     /// # Errors
     /// - `NotInitialized`    — contract is not yet initialised.
+    /// - `EmptyTitle`        — title is empty.
+    /// - `TitleTooLong`      — title exceeds 128 bytes.
     /// - `EmptyDescription`  — description is empty.
     /// - `DescriptionTooLong` — description exceeds 256 bytes.
     /// - `Overflow`          — ledger arithmetic overflow.
@@ -173,10 +177,12 @@ impl UpgradeManager {
         proposer: Address,
         target: Address,
         new_wasm_hash: BytesN<32>,
+        title: String,
         description: String,
+        metadata_hash: BytesN<32>,
     ) -> Result<u64, Error> {
         proposer.require_auth();
-        create_proposal(&env, proposer, target, new_wasm_hash, description)
+        create_proposal(&env, proposer, target, new_wasm_hash, title, description, metadata_hash)
     }
 
     /// Vote on an active proposal.

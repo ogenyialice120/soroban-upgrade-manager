@@ -646,15 +646,15 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
 
-## 2026-11-19 — design/batch-vote (Issue #113)
+## 2026-11-19 — design/quorum-progress-view (Issue #107)
 
 ### Changes
 
-**docs/design/batch-vote.md** — New design document for the batch vote function.
+**docs/design/quorum-progress-view.md** — New design document for the read-only quorum_progress view.
 
 **_CHANGELOG.md** — This entry.
 
-**Why:** Voting on multiple proposals requires one transaction per proposal (`vote(voter, proposal_id, approve)`), each paying full `require_auth` + storage read/write overhead. The design proposes a single `batch_vote(voter, proposal_ids, approves)` entrypoint that authenticates the caller once and records one vote per proposal. Key decisions: vectors must be equal-length (validated up front), a single `voter` signs for the whole batch (`require_auth` called once, amortizing auth gas), and per-proposal recoverable failures are skipped (recorded as `VoteOutcome::Skipped`) rather than reverting the whole batch, since the goal is gas efficiency. Systemic errors and length mismatch fail the whole batch. No new storage is needed; it reuses the existing `cast_vote` logic. This touches the existing "one vote per call" guarantee. No contract code is written until a maintainer approves this design.
+**Why:** There is no view showing how close a proposal is to meeting quorum and the approval threshold; consumers must fetch the full Proposal struct via get_proposal and recompute the pass/fail math themselves. The design proposes a read-only quorum_progress(proposal_id) view returning a QuorumProgress struct: yes_votes, no_votes, total_votes, quorum, approval_threshold_pct, yes_needed_for_quorum, yes_needed_for_threshold, and passing. The math is total_votes = yes + no; passing = total >= quorum && yes * 100 >= total * threshold. It is largely a convenience wrapper over get_proposal, but adds value as a single authoritative implementation of the progress math, a smaller purpose-built return type, and pre-computed yes_needed fields. No new storage, no auth, no state changes. This touches no existing on-chain guarantee (additive view). No contract code is written until a maintainer approves this design.
 
 **BREAKING:** None.
 

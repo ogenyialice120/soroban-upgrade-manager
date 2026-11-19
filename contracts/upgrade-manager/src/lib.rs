@@ -28,12 +28,15 @@ mod types;
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
 
 use governance::{
-    cancel_proposal, cast_vote, create_proposal, emit_admin_transferred, emit_config_updated,
-    emit_executed, emit_initialized, finalize_voting, invoke_upgrade, load_admin, load_config,
-    load_proposal, require_admin, save_admin, save_config, validate_config,
+    cancel_proposal, cast_vote, create_proposal, delegate, emit_admin_transferred,
+    emit_config_updated, emit_executed, emit_initialized, finalize_voting, invoke_upgrade,
+    load_admin, load_config, load_proposal, require_admin, revoke_delegation, save_admin,
+    save_config, validate_config,
 };
 use timelock::{assert_timelock_passed, ledgers_until_executable};
-use types::{Config, DataKey, Error, Proposal, ProposalStatus, INSTANCE_TTL_BUMP, MAX_PROPOSALS_PAGE_LIMIT};
+use types::{
+    Config, DataKey, Error, Proposal, ProposalStatus, INSTANCE_TTL_BUMP,
+};
 
 // ---------------------------------------------------------------------------
 // Contract struct
@@ -189,6 +192,10 @@ impl UpgradeManager {
     ///
     /// The voter must authenticate. Each address may vote exactly once.
     /// Voting is only allowed while ledger.sequence() <= voting_ends_at.
+    /// If the voter has delegated their vote, this call fails with
+    /// `HasDelegated` — the delegate must vote instead.
+    /// If the voter is a delegate, their vote carries the weight of 1
+    /// (themselves) plus the number of voters who delegated to them.
     ///
     /// # Parameters
     /// - `voter`       — Address casting the vote (must sign).
@@ -199,11 +206,41 @@ impl UpgradeManager {
     /// - `ProposalNotFound`  — unknown proposal ID.
     /// - `VotingClosed`      — proposal is not Active.
     /// - `VotingPeriodEnded` — the voting window has closed.
+    /// - `HasDelegated`      — voter has delegated; delegate must vote.
     /// - `AlreadyVoted`      — this address already voted.
     /// - `Overflow`          — vote count arithmetic overflow.
     pub fn vote(env: Env, voter: Address, proposal_id: u64, approve: bool) -> Result<(), Error> {
         voter.require_auth();
         cast_vote(&env, proposal_id, voter, approve)
+    }
+
+    /// Delegate `caller`'s voting power to `delegate_to` for all proposals.
+    ///
+    /// The delegate casts votes on the caller's behalf. The caller cannot
+    /// vote directly while delegated. Delegation is global (all proposals)
+    /// and not transitive.
+    ///
+    /// # Parameters
+    /// - `caller`     — Address delegating their vote (must sign).
+    /// - `delegate_to` — Address receiving the delegated voting power.
+    ///
+    /// # Errors
+    /// - `CannotDelegateToSelf` — caller cannot delegate to themselves.
+    /// - `HasDelegated`         — delegate has already delegated (no transitive).
+    pub fn delegate(
+        env: Env,
+        caller: Address,
+        delegate_to: Address,
+    ) -> Result<(), Error> {
+        delegate(&env, caller, delegate_to)
+    }
+
+    /// Revoke `caller`'s delegation, restoring their ability to vote directly.
+    ///
+    /// # Errors
+    /// - `NotDelegating` — caller has not delegated; nothing to revoke.
+    pub fn revoke_delegation(env: Env, caller: Address) -> Result<(), Error> {
+        revoke_delegation(&env, caller)
     }
 
     /// Finalize voting on a proposal.

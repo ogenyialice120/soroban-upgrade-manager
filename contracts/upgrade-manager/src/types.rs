@@ -17,6 +17,10 @@ pub enum DataKey {
     ProposalCount,
     /// Vote cast by a voter on a proposal: (proposal_id, voter)
     Vote(u64, Address),
+    /// Delegation: voter delegates their vote to `delegate`: (voter)
+    Delegation(Address),
+    /// Delegation count: number of voters delegated to `delegate`: (delegate)
+    DelegationCount(Address),
 }
 
 // ---------------------------------------------------------------------------
@@ -175,4 +179,10 @@ pub enum Error {
     EmptyTitle = 20,
     /// Provided title exceeds the 128-byte limit.
     TitleTooLong = 21,
+    /// Address has already delegated their vote and cannot vote directly.
+    HasDelegated = 22,
+    /// Cannot delegate to yourself.
+    CannotDelegateToSelf = 23,
+    /// Address has not delegated; nothing to revoke.
+    NotDelegating = 24,
 }

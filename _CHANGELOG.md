@@ -646,17 +646,17 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
 
-## 2026-11-19 — design/admin-two-step-transfer (Issue #109)
+## 2026-11-19 — design/quorum-progress-view (Issue #107)
 
 ### Changes
 
-**docs/design/admin-two-step-transfer.md** — New design document for the admin two-step transfer.
+**docs/design/quorum-progress-view.md** — New design document for the read-only quorum_progress view.
 
 **_CHANGELOG.md** — This entry.
 
-**Why:** `transfer_admin` is single-step: the current admin immediately transfers the admin role, so a mistyped or unreachable address can permanently lock the contract. The design proposes a two-step flow: `propose_admin(new_admin)` (current admin only) stores a `PendingAdmin`; `accept_admin()` (pending admin only) finalizes by promoting `PendingAdmin` to `Admin` and clearing it. The old admin can cancel a pending transfer (`cancel_propose_admin`) or re-propose to override. A new `DataKey::PendingAdmin(Address)` storage entry tracks the in-flight transfer; `get_pending_admin()` is a read-only view. If the new admin never accepts, the transfer stays pending until cancelled or re-proposed (no auto-expiry in v1). This touches the existing "admin transfer is instant" guarantee (becomes two-step). No contract code is written until a maintainer approves this design.
+**Why:** There is no view showing how close a proposal is to meeting quorum and the approval threshold; consumers must fetch the full Proposal struct via get_proposal and recompute the pass/fail math themselves. The design proposes a read-only quorum_progress(proposal_id) view returning a QuorumProgress struct: yes_votes, no_votes, total_votes, quorum, approval_threshold_pct, yes_needed_for_quorum, yes_needed_for_threshold, and passing. The math is total_votes = yes + no; passing = total >= quorum && yes * 100 >= total * threshold. It is largely a convenience wrapper over get_proposal, but adds value as a single authoritative implementation of the progress math, a smaller purpose-built return type, and pre-computed yes_needed fields. No new storage, no auth, no state changes. This touches no existing on-chain guarantee (additive view). No contract code is written until a maintainer approves this design.
 
-**BREAKING:** None (design only; implementation would replace `transfer_admin`).
+**BREAKING:** None.
 
 **Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
 

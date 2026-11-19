@@ -646,17 +646,17 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
 
-## 2026-11-19 — design/wasm-hash-allowlist-manager (Issue #111)
+## 2026-11-19 — design/quorum-progress-view (Issue #107)
 
 ### Changes
 
-**docs/design/wasm-hash-allowlist-manager.md** — New design document for the manager-side WASM hash allowlist.
+**docs/design/quorum-progress-view.md** — New design document for the read-only quorum_progress view.
 
 **_CHANGELOG.md** — This entry.
 
-**Why:** `create_proposal`/`propose_upgrade` accepts any `BytesN<32>` as `new_wasm_hash`, so a proposer can submit a proposal for unreviewed or malicious code. The design proposes a global, admin-managed allowlist gated by an optional `AllowlistEnabled` flag (default disabled for backward compatibility). Admin-only `add_allowed_wasm`/`remove_allowed_wasm`/`set_allowlist_enabled` manage it. The allowlist is checked at `propose_upgrade` only (not at `execute`, where the hash is already snapshotted), so it governs what may enter the system without retroactively invalidating in-flight proposals. Storage uses per-hash `DataKey::AllowedWasm(BytesN<32>)` entries for O(1) lookup plus an `AllowlistEnabled` bool. A new `Error::WasmHashNotAllowlisted` is returned when an enabled allowlist blocks a hash. This touches the existing "any hash can be proposed" guarantee. No contract code is written until a maintainer approves this design.
+**Why:** There is no view showing how close a proposal is to meeting quorum and the approval threshold; consumers must fetch the full Proposal struct via get_proposal and recompute the pass/fail math themselves. The design proposes a read-only quorum_progress(proposal_id) view returning a QuorumProgress struct: yes_votes, no_votes, total_votes, quorum, approval_threshold_pct, yes_needed_for_quorum, yes_needed_for_threshold, and passing. The math is total_votes = yes + no; passing = total >= quorum && yes * 100 >= total * threshold. It is largely a convenience wrapper over get_proposal, but adds value as a single authoritative implementation of the progress math, a smaller purpose-built return type, and pre-computed yes_needed fields. No new storage, no auth, no state changes. This touches no existing on-chain guarantee (additive view). No contract code is written until a maintainer approves this design.
 
-**BREAKING:** None (allowlist disabled by default; existing behavior preserved).
+**BREAKING:** None.
 
 **Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
 

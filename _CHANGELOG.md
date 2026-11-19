@@ -645,3 +645,18 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 **BREAKING:** None.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
+
+## 2026-11-19 — design/wasm-hash-allowlist-manager (Issue #111)
+
+### Changes
+
+**docs/design/wasm-hash-allowlist-manager.md** — New design document for the manager-side WASM hash allowlist.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** `create_proposal`/`propose_upgrade` accepts any `BytesN<32>` as `new_wasm_hash`, so a proposer can submit a proposal for unreviewed or malicious code. The design proposes a global, admin-managed allowlist gated by an optional `AllowlistEnabled` flag (default disabled for backward compatibility). Admin-only `add_allowed_wasm`/`remove_allowed_wasm`/`set_allowlist_enabled` manage it. The allowlist is checked at `propose_upgrade` only (not at `execute`, where the hash is already snapshotted), so it governs what may enter the system without retroactively invalidating in-flight proposals. Storage uses per-hash `DataKey::AllowedWasm(BytesN<32>)` entries for O(1) lookup plus an `AllowlistEnabled` bool. A new `Error::WasmHashNotAllowlisted` is returned when an enabled allowlist blocks a hash. This touches the existing "any hash can be proposed" guarantee. No contract code is written until a maintainer approves this design.
+
+**BREAKING:** None (allowlist disabled by default; existing behavior preserved).
+
+**Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
+

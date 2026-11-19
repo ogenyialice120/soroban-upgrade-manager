@@ -645,3 +645,18 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 **BREAKING:** None.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes. (Validated against existing patterns; `cargo` not available in this environment to run commands directly.)
+
+## 2026-11-19 — design/batch-vote (Issue #113)
+
+### Changes
+
+**docs/design/batch-vote.md** — New design document for the batch vote function.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** Voting on multiple proposals requires one transaction per proposal (`vote(voter, proposal_id, approve)`), each paying full `require_auth` + storage read/write overhead. The design proposes a single `batch_vote(voter, proposal_ids, approves)` entrypoint that authenticates the caller once and records one vote per proposal. Key decisions: vectors must be equal-length (validated up front), a single `voter` signs for the whole batch (`require_auth` called once, amortizing auth gas), and per-proposal recoverable failures are skipped (recorded as `VoteOutcome::Skipped`) rather than reverting the whole batch, since the goal is gas efficiency. Systemic errors and length mismatch fail the whole batch. No new storage is needed; it reuses the existing `cast_vote` logic. This touches the existing "one vote per call" guarantee. No contract code is written until a maintainer approves this design.
+
+**BREAKING:** None.
+
+**Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
+

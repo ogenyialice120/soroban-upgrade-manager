@@ -25,15 +25,18 @@ mod governance;
 mod timelock;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
 
 use governance::{
-    cancel_proposal, cast_vote, create_proposal, emit_admin_transferred, emit_config_updated,
-    emit_executed, emit_initialized, finalize_voting, invoke_upgrade, load_admin, load_config,
-    load_proposal, require_admin, save_admin, save_config, validate_config,
+    cancel_proposal, cast_vote, create_proposal, delegate, emit_admin_transferred,
+    emit_config_updated, emit_executed, emit_initialized, finalize_voting, invoke_upgrade,
+    load_admin, load_config, load_proposal, require_admin, revoke_delegation, save_admin,
+    save_config, validate_config,
 };
 use timelock::{assert_timelock_passed, ledgers_until_executable};
-use types::{Config, DataKey, Error, Proposal, ProposalStatus, INSTANCE_TTL_BUMP};
+use types::{
+    Config, DataKey, Error, Proposal, ProposalStatus, INSTANCE_TTL_BUMP,
+};
 
 // ---------------------------------------------------------------------------
 // Contract struct
@@ -158,13 +161,17 @@ impl UpgradeManager {
     /// - `proposer`       — Address creating the proposal (must sign).
     /// - `target`         — Contract address to be upgraded.
     /// - `new_wasm_hash`  — Hash of the already-uploaded WASM binary.
+    /// - `title`          — Short title (1–128 bytes).
     /// - `description`    — Human-readable description (1–256 bytes).
+    /// - `metadata_hash`  — SHA-256 hash of off-chain metadata (all zeros if none).
     ///
     /// # Returns
     /// The new proposal ID (starts at 0, increments by 1).
     ///
     /// # Errors
     /// - `NotInitialized`    — contract is not yet initialised.
+    /// - `EmptyTitle`        — title is empty.
+    /// - `TitleTooLong`      — title exceeds 128 bytes.
     /// - `EmptyDescription`  — description is empty.
     /// - `DescriptionTooLong` — description exceeds 256 bytes.
     /// - `Overflow`          — ledger arithmetic overflow.
@@ -173,16 +180,22 @@ impl UpgradeManager {
         proposer: Address,
         target: Address,
         new_wasm_hash: BytesN<32>,
+        title: String,
         description: String,
+        metadata_hash: BytesN<32>,
     ) -> Result<u64, Error> {
         proposer.require_auth();
-        create_proposal(&env, proposer, target, new_wasm_hash, description)
+        create_proposal(&env, proposer, target, new_wasm_hash, title, description, metadata_hash)
     }
 
     /// Vote on an active proposal.
     ///
     /// The voter must authenticate. Each address may vote exactly once.
     /// Voting is only allowed while ledger.sequence() <= voting_ends_at.
+    /// If the voter has delegated their vote, this call fails with
+    /// `HasDelegated` — the delegate must vote instead.
+    /// If the voter is a delegate, their vote carries the weight of 1
+    /// (themselves) plus the number of voters who delegated to them.
     ///
     /// # Parameters
     /// - `voter`       — Address casting the vote (must sign).
@@ -193,11 +206,41 @@ impl UpgradeManager {
     /// - `ProposalNotFound`  — unknown proposal ID.
     /// - `VotingClosed`      — proposal is not Active.
     /// - `VotingPeriodEnded` — the voting window has closed.
+    /// - `HasDelegated`      — voter has delegated; delegate must vote.
     /// - `AlreadyVoted`      — this address already voted.
     /// - `Overflow`          — vote count arithmetic overflow.
     pub fn vote(env: Env, voter: Address, proposal_id: u64, approve: bool) -> Result<(), Error> {
         voter.require_auth();
         cast_vote(&env, proposal_id, voter, approve)
+    }
+
+    /// Delegate `caller`'s voting power to `delegate_to` for all proposals.
+    ///
+    /// The delegate casts votes on the caller's behalf. The caller cannot
+    /// vote directly while delegated. Delegation is global (all proposals)
+    /// and not transitive.
+    ///
+    /// # Parameters
+    /// - `caller`     — Address delegating their vote (must sign).
+    /// - `delegate_to` — Address receiving the delegated voting power.
+    ///
+    /// # Errors
+    /// - `CannotDelegateToSelf` — caller cannot delegate to themselves.
+    /// - `HasDelegated`         — delegate has already delegated (no transitive).
+    pub fn delegate(
+        env: Env,
+        caller: Address,
+        delegate_to: Address,
+    ) -> Result<(), Error> {
+        delegate(&env, caller, delegate_to)
+    }
+
+    /// Revoke `caller`'s delegation, restoring their ability to vote directly.
+    ///
+    /// # Errors
+    /// - `NotDelegating` — caller has not delegated; nothing to revoke.
+    pub fn revoke_delegation(env: Env, caller: Address) -> Result<(), Error> {
+        revoke_delegation(&env, caller)
     }
 
     /// Finalize voting on a proposal.
@@ -271,6 +314,46 @@ impl UpgradeManager {
     /// - `ProposalNotFound` — unknown proposal ID.
     pub fn get_proposal(env: Env, proposal_id: u64) -> Result<Proposal, Error> {
         load_proposal(&env, proposal_id)
+    }
+
+    /// Return a paginated list of proposals starting at `offset`, up to `limit` entries.
+    ///
+    /// Proposals are returned in ascending ID order. If `offset` is greater than or
+    /// equal to the total proposal count, an empty vector is returned. If `limit` is 0,
+    /// an empty vector is returned. `limit` is capped at `MAX_PROPOSALS_PAGE_LIMIT` (50)
+    /// to bound gas costs.
+    ///
+    /// # Arguments
+    /// - `offset` — The starting proposal ID (inclusive).
+    /// - `limit`  — Maximum number of proposals to return (capped at 50).
+    ///
+    /// # Errors
+    /// - `NotInitialized` — contract has not been initialised.
+    pub fn get_proposals(env: Env, offset: u64, limit: u32) -> Result<Vec<Proposal>, Error> {
+        let count = env
+            .storage()
+            .instance()
+            .get::<u64>(&DataKey::ProposalCount)
+            .unwrap_or(0u64);
+
+        if offset >= count || limit == 0 {
+            return Ok(vec![&env]);
+        }
+
+        let limit = limit.min(MAX_PROPOSALS_PAGE_LIMIT);
+        let end = offset
+            .checked_add(limit as u64)
+            .unwrap_or(count)
+            .min(count);
+
+        let mut result = Vec::new(&env);
+        let mut id = offset;
+        while id < end {
+            result.push_back(load_proposal(&env, id)?);
+            id += 1;
+        }
+
+        Ok(result)
     }
 
     /// Return the current governance configuration.

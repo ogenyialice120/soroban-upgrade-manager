@@ -1,0 +1,22 @@
+[package]
+name = "triple-target"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Example target that can be upgraded three times in sequence (v1 -> v2 -> v3) to prove repeated upgrades preserve the manager relationship."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0.11", features = ["testutils"] }
+
+[features]
+# Build with `--features v2` or `--features v3` to get `version()` returning 2 or 3.
+v2 = []
+v3 = []
+testutils = ["soroban-sdk/testutils"]

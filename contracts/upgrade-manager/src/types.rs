@@ -17,6 +17,10 @@ pub enum DataKey {
     ProposalCount,
     /// Vote cast by a voter on a proposal: (proposal_id, voter)
     Vote(u64, Address),
+    /// Delegation: voter delegates their vote to `delegate`: (voter)
+    Delegation(Address),
+    /// Delegation count: number of voters delegated to `delegate`: (delegate)
+    DelegationCount(Address),
 }
 
 // ---------------------------------------------------------------------------
@@ -30,6 +34,10 @@ pub const INSTANCE_TTL_BUMP: u32 = 518_400;
 /// Minimum TTL applied to persistent Proposal and Vote entries on write and read.
 /// 2_592_000 ledgers ≈ 150 days — long enough to outlive any realistic proposal.
 pub const PERSISTENT_TTL_BUMP: u32 = 2_592_000;
+
+/// Maximum number of proposals returned by `get_proposals` in a single call.
+/// Limits gas cost of reading multiple proposal entries from storage.
+pub const MAX_PROPOSALS_PAGE_LIMIT: u32 = 50;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -102,8 +110,13 @@ pub struct Proposal {
     pub status: ProposalStatus,
     /// Address that created the proposal.
     pub proposer: Address,
+    /// Short human-readable title (min 1 char, max 128 bytes).
+    pub title: soroban_sdk::String,
     /// Human-readable description (min 1 char, max 256 bytes).
     pub description: soroban_sdk::String,
+    /// SHA-256 hash of off-chain proposal metadata (title, changelog URI,
+    /// compatibility report hash, etc.). All zeros if no off-chain metadata.
+    pub metadata_hash: BytesN<32>,
     // --- Snapshotted governance rules (set at creation, never changed) ---
     /// Snapshot of Config.voting_period at creation time.
     pub snap_voting_period: u32,
@@ -162,4 +175,14 @@ pub enum Error {
     EmptyDescription = 18,
     /// voting_period must be at least 1 ledger.
     InvalidVotingPeriod = 19,
+    /// Title must not be empty.
+    EmptyTitle = 20,
+    /// Provided title exceeds the 128-byte limit.
+    TitleTooLong = 21,
+    /// Address has already delegated their vote and cannot vote directly.
+    HasDelegated = 22,
+    /// Cannot delegate to yourself.
+    CannotDelegateToSelf = 23,
+    /// Address has not delegated; nothing to revoke.
+    NotDelegating = 24,
 }

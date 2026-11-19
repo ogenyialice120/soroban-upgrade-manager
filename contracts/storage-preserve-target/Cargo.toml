@@ -1,0 +1,22 @@
+[package]
+name = "storage-preserve-target"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Target contract proving storage layout is preserved across a v1→v2 WASM upgrade."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0.11", features = ["testutils"] }
+
+[features]
+# Build with `--features v2` to get a contract whose `increment` reads and
+# increments the same `count` key as v1.
+v2 = []
+testutils = ["soroban-sdk/testutils"]

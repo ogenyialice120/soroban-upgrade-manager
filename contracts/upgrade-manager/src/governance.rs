@@ -151,6 +151,129 @@ pub fn record_vote(env: &Env, proposal_id: u64, voter: &Address) {
         .extend_ttl(&key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
 }
 
+/// Load the delegate address that `voter` has delegated to, if any.
+pub fn load_delegation(env: &Env, voter: &Address) -> Option<Address> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Delegation(voter.clone()))
+}
+
+/// Save a delegation: `voter` delegates to `delegate`.
+pub fn save_delegation(env: &Env, voter: &Address, delegate: &Address) {
+    let key = DataKey::Delegation(voter.clone());
+    env.storage().persistent().set(&key, delegate);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
+}
+
+/// Remove a delegation for `voter`.
+pub fn remove_delegation(env: &Env, voter: &Address) {
+    let key = DataKey::Delegation(voter.clone());
+    env.storage().persistent().remove(&key);
+}
+
+/// Count how many voters have delegated to `delegate`.
+pub fn delegation_count(env: &Env, delegate: &Address) -> u32 {
+    // Note: Soroban storage does not support prefix iteration, so we track
+    // the count in a separate counter updated on delegate/revoke.
+    // This is stored as DataKey::DelegationCount(delegate) internally via
+    // the save/remove_delegation_count helpers.
+    match env.storage().persistent().get::<u32>(&DataKey::DelegationCount(delegate.clone())) {
+        Some(c) => c,
+        None => 0,
+    }
+}
+
+/// Increment the delegation count for `delegate`.
+fn increment_delegation_count(env: &Env, delegate: &Address) {
+    let key = DataKey::DelegationCount(delegate.clone());
+    let current: u32 = env.storage().persistent().get(&key).unwrap_or(0u32);
+    let next = current.checked_add(1).expect("delegation count overflow");
+    env.storage().persistent().set(&key, &next);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
+}
+
+/// Decrement the delegation count for `delegate`.
+fn decrement_delegation_count(env: &Env, delegate: &Address) {
+    let key = DataKey::DelegationCount(delegate.clone());
+    let current: u32 = env.storage().persistent().get(&key).unwrap_or(0u32);
+    if current == 0 {
+        return;
+    }
+    let next = current.saturating_sub(1);
+    env.storage().persistent().set(&key, &next);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
+}
+
+/// Delegate `voter`'s voting power to `delegate` for all proposals.
+///
+/// The delegate casts votes on the voter's behalf. The voter cannot vote
+/// directly while delegated. Delegation is global (applies to all proposals)
+/// and not transitive (a delegate who has delegated cannot receive more
+/// delegations).
+///
+/// # Errors
+/// - `CannotDelegateToSelf` — voter cannot delegate to themselves.
+/// - `HasDelegated` — delegate has already delegated (no transitive delegation).
+pub fn delegate(env: &Env, voter: Address, delegate_to: Address) -> Result<(), Error> {
+    voter.require_auth();
+
+    if voter == delegate_to {
+        return Err(Error::CannotDelegateToSelf);
+    }
+
+    // No transitive delegation: the delegate must not have delegated themselves.
+    if load_delegation(env, &delegate_to).is_some() {
+        return Err(Error::HasDelegated);
+    }
+
+    // If voter already delegated, remove old delegation and decrement count.
+    if let Some(old_delegate) = load_delegation(env, &voter) {
+        if old_delegate == delegate_to {
+            return Ok(()); // Already delegated to this address.
+        }
+        remove_delegation(env, &voter);
+        decrement_delegation_count(env, &old_delegate);
+    }
+
+    save_delegation(env, &voter, &delegate_to);
+    increment_delegation_count(env, &delegate_to);
+
+    env.events().publish(
+        (symbol_short!("delegation"), symbol_short!("delegated")),
+        (voter, delegate_to),
+    );
+
+    Ok(())
+}
+
+/// Revoke `voter`'s delegation, restoring their ability to vote directly.
+///
+/// # Errors
+/// - `NotDelegating` — voter has not delegated; nothing to revoke.
+pub fn revoke_delegation(env: &Env, voter: Address) -> Result<(), Error> {
+    voter.require_auth();
+
+    let Some(delegate) = load_delegation(env, &voter) else {
+        return Err(Error::NotDelegating);
+    };
+
+    remove_delegation(env, &voter);
+    decrement_delegation_count(env, &delegate);
+
+    env.events().publish(
+        (symbol_short!("delegation"), symbol_short!("revoked")),
+        voter,
+    );
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Governance actions
 // ---------------------------------------------------------------------------
@@ -235,13 +358,24 @@ pub fn create_proposal(
 
 /// Cast a vote on an active proposal.
 ///
+/// If `voter` has delegated their vote, they cannot vote directly — their
+/// delegate must vote on their behalf. If `voter` is a delegate, their vote
+/// carries the weight of 1 (themselves) plus the number of voters who have
+/// delegated to them.
+///
 /// # Errors
 /// - `ProposalNotFound`   if the ID is unknown.
 /// - `VotingClosed`       if the proposal is not Active.
 /// - `VotingPeriodEnded`  if the voting period has ended.
-/// - `AlreadyVoted`       if `voter` already voted.
+/// - `HasDelegated`       if `voter` has delegated and cannot vote directly.
+/// - `AlreadyVoted`       if `voter` already voted on this proposal.
 /// - `Overflow`           if vote arithmetic overflows.
 pub fn cast_vote(env: &Env, proposal_id: u64, voter: Address, approve: bool) -> Result<(), Error> {
+    // A delegated voter cannot vote directly; their delegate votes for them.
+    if load_delegation(env, &voter).is_some() {
+        return Err(Error::HasDelegated);
+    }
+
     let mut proposal = load_proposal(env, proposal_id)?;
 
     if proposal.status != ProposalStatus::Active {
@@ -257,10 +391,21 @@ pub fn cast_vote(env: &Env, proposal_id: u64, voter: Address, approve: bool) -> 
         return Err(Error::AlreadyVoted);
     }
 
+    // Vote weight = 1 (self) + number of delegators.
+    let weight: u32 = 1
+        .checked_add(delegation_count(env, &voter))
+        .ok_or(Error::Overflow)?;
+
     if approve {
-        proposal.yes_votes = proposal.yes_votes.checked_add(1).ok_or(Error::Overflow)?;
+        proposal.yes_votes = proposal
+            .yes_votes
+            .checked_add(weight)
+            .ok_or(Error::Overflow)?;
     } else {
-        proposal.no_votes = proposal.no_votes.checked_add(1).ok_or(Error::Overflow)?;
+        proposal.no_votes = proposal
+            .no_votes
+            .checked_add(weight)
+            .ok_or(Error::Overflow)?;
     }
 
     record_vote(env, proposal_id, &voter);
@@ -269,7 +414,7 @@ pub fn cast_vote(env: &Env, proposal_id: u64, voter: Address, approve: bool) -> 
     // Emit "vote_cast" event.
     env.events().publish(
         (symbol_short!("vote"), symbol_short!("cast")),
-        (proposal_id, voter, approve),
+        (proposal_id, voter, approve, weight),
     );
 
     Ok(())

@@ -1711,4 +1711,116 @@ mod tests {
         });
     }
 
+    // -----------------------------------------------------------------------
+    // get_proposals pagination tests
+    // -----------------------------------------------------------------------
+
+    /// get_proposals returns the first page of proposals starting from offset 0.
+    #[test]
+    fn test_get_proposals_first_page() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let hash = zero_hash(&env);
+
+        // Create 3 proposals.
+        let id0 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
+        let id1 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 1"));
+        let id2 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 2"));
+
+        let page = client.get_proposals(&0u64, &2u32);
+        assert_eq!(page.len(), 2, "first page must return 2 proposals");
+        assert_eq!(page[0].id, id0, "first proposal must be id0");
+        assert_eq!(page[1].id, id1, "second proposal must be id1");
+    }
+
+    /// get_proposals returns proposals starting at the given offset.
+    #[test]
+    fn test_get_proposals_offset() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let hash = zero_hash(&env);
+
+        let _id0 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
+        let id1 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 1"));
+        let id2 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 2"));
+
+        let page = client.get_proposals(&1u64, &2u32);
+        assert_eq!(page.len(), 2, "offset page must return 2 proposals");
+        assert_eq!(page[0].id, id1, "first proposal at offset 1 must be id1");
+        assert_eq!(page[1].id, id2, "second proposal at offset 1 must be id2");
+    }
+
+    /// get_proposals returns an empty vec when offset >= proposal count.
+    #[test]
+    fn test_get_proposals_offset_beyond_count() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let hash = zero_hash(&env);
+
+        client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
+
+        let page = client.get_proposals(&5u64, &10u32);
+        assert!(page.is_empty(), "offset beyond count must return empty vec");
+    }
+
+    /// get_proposals returns an empty vec when limit is 0.
+    #[test]
+    fn test_get_proposals_zero_limit() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let hash = zero_hash(&env);
+
+        client.propose_upgrade(&admin, &target, &hash, &desc(&env, "proposal 0"));
+
+        let page = client.get_proposals(&0u64, &0u32);
+        assert!(page.is_empty(), "limit 0 must return empty vec");
+    }
+
+    /// get_proposals caps the limit at MAX_PROPOSALS_PAGE_LIMIT.
+    #[test]
+    fn test_get_proposals_limit_capped() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let hash = zero_hash(&env);
+
+        // Create 60 proposals.
+        for i in 0..60u32 {
+            client.propose_upgrade(&admin, &target, &hash, &desc(&env, &format!("proposal {}", i)));
+        }
+
+        let page = client.get_proposals(&0u64, &100u32);
+        assert!(
+            page.len() <= 50,
+            "page length must not exceed MAX_PROPOSALS_PAGE_LIMIT (50), got {}",
+            page.len()
+        );
+    }
+
+    /// get_proposals returns proposals in ascending ID order.
+    #[test]
+    fn test_get_proposals_ordered_by_id() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let hash = zero_hash(&env);
+
+        let id0 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "first"));
+        let id1 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "second"));
+        let id2 = client.propose_upgrade(&admin, &target, &hash, &desc(&env, "third"));
+
+        let page = client.get_proposals(&0u64, &10u32);
+        assert_eq!(page.len(), 3);
+        assert_eq!(page[0].id, id0);
+        assert_eq!(page[1].id, id1);
+        assert_eq!(page[2].id, id2);
+        assert!(page[0].id < page[1].id && page[1].id < page[2].id, "proposals must be ordered by ID");
+    }
+
+    /// get_proposals on a contract with no proposals returns an empty vec.
+    #[test]
+    fn test_get_proposals_no_proposals() {
+        let (env, admin, cid, client) = setup();
+        let page = client.get_proposals(&0u64, &10u32);
+        assert!(page.is_empty(), "no proposals must return empty vec");
+    }
+
 } // end mod tests

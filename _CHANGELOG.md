@@ -660,3 +660,41 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
 
+## 2026-11-20 — docs/check-claims-explanation (Issue #99)
+
+### Changes
+
+**docs/check-claims-explanation.md** — New document explaining what
+`scripts/check_claims.sh` checks and, importantly, what it does NOT prove.
+
+**_CHANGELOG.md** — This entry.
+
+### Changes detail
+
+Explains the three checks performed by `scripts/check_claims.sh`:
+
+1. Every `VERIFIED` row in `docs/claims-audit.md` has a test name in backticks.
+2. Every named test exists as `fn <name>` in
+   `contracts/upgrade-manager/src/test.rs` (whole-word match).
+3. Every status is `VERIFIED`, `REWORDED`, or `REMOVED`.
+
+Explains what the script does NOT prove:
+
+- It does not run the tests (never calls `cargo test`).
+- It does not verify that test assertions match the claim (only checks the
+  function name exists).
+- It does not check for missing claims (only validates existing rows).
+
+Documents the exit codes (`0` = pass, `1` = fail), the relationship to
+`cargo test`, and the recommended validation sequence
+(`check_claims.sh` → `cargo test` → manual review).
+
+**Why:** No document explained what `scripts/check_claims.sh` does and does not
+prove, so contributors could mistake it for a test runner or assume it validates
+claim correctness.
+
+**BREAKING:** None.
+
+**Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only; no
+contract source, test, or script changes.)
+

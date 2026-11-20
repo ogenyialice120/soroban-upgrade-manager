@@ -660,3 +660,36 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
 
+## 2026-11-20 — docs/fixture-build (Issue #98)
+
+### Changes
+
+**docs/fixture-build.md** — New document explaining the fixture build and
+verification process for contributors.
+
+**_CHANGELOG.md** — This entry.
+
+### Changes detail
+
+Documents:
+
+- What the fixtures are (`target_v1.wasm`, `target_v2.wasm`, `SHA256SUMS` in
+  `contracts/upgrade-manager/tests/fixtures/`).
+- How to build them (`bash scripts/build_fixtures.sh`, including the v1/v2
+  feature distinction and the regenerate-and-commit workflow).
+- How to verify checksums (`cd .../fixtures && sha256sum -c SHA256SUMS`).
+- When to rebuild (after changing `example-target` source; not for unrelated
+  changes).
+- The toolchain requirement (Rust 1.88.0, `wasm32v1-none` target).
+- That CI only verifies committed fixtures match `SHA256SUMS` and does **not**
+  rebuild fixtures, because WASM builds are not byte-identical across machines.
+
+**Why:** No document explained how the fixture WASMs are built or verified, so
+contributors who need to rebuild fixtures or verify them locally had no
+reference.
+
+**BREAKING:** None.
+
+**Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only; no
+contract source, test, or script changes.)
+

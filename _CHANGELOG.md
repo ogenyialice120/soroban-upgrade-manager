@@ -660,38 +660,39 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
 
-## 2026-11-20 — docs/example-target-design (Issue #96)
+## 2026-11-20 — docs/migration-guide-phase-1 (Issue #100)
 
 ### Changes
 
-**docs/example-target-design.md** — New document explaining the example-target
-contract design and security model.
+**docs/migration-guide.md** — New standalone migration guide for users upgrading
+from the pre-Phase 1 contract.
 
 **_CHANGELOG.md** — This entry.
 
 ### Changes detail
 
-Documents:
+Documents each breaking change from the "BREAKING changes summary for Phase 1"
+section of `_CHANGELOG.md` with what changed, why, and what a caller or
+integrator must update:
 
-- Why the constructor does not call `require_auth()`: the manager is a contract
-  address and cannot sign, so authentication is deferred to `upgrade()`.
-- Why `upgrade()` calls `manager.require_auth()`: only the stored manager may
-  replace the contract's WASM.
-- How the `v2` feature flag works: `version()` returns `1` or `2` based on the
-  `v2` feature flag at compile time.
-- How the contract serves as a reference for production targets (store manager
-  at deploy time, `upgrade()` requires manager auth + `update_current_contract_wasm`,
-  read-only queries).
-- Front-running prevention: the constructor is atomic with deployment, so there
-  is no window for an observer to claim the manager role.
+1. `initialize` takes a new required argument: `voting_period: u32`.
+2. `get_config` and `get_admin` return `Result<_, Error>` instead of bare values.
+3. `proposal.executable_at` is `0` until `finalize()` is called.
+4. `finalize()` now requires the voting period to have ended (returns
+   `VotingStillActive` if called too early); previously it required
+   `executable_at` to have passed.
+5. `cancel()` now returns `ProposalFinalized` for `Defeated` proposals too.
 
-**Why:** The example-target is a reference implementation for target contracts,
-and its design decisions (no auth in constructor, auth in upgrade, version
-feature flag) were only explained in a module doc comment. Contributors building
-their own targets need a dedicated document.
+Each change includes before/after examples (Rust SDK client and CLI where
+relevant) and a quick reference table.
 
-**BREAKING:** None.
+**Why:** There is no standalone migration guide for users upgrading from the
+pre-Phase 1 contract, even though `_CHANGELOG.md` documents the five Phase 1
+breaking changes. Integrators need a single document explaining what changed,
+why, and what to update, with concrete before/after examples.
+
+**BREAKING:** Documents existing Phase 1 breaking changes; introduces none.
 
 **Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only; no
-contract source, test, or script changes.)
+contract source or test changes.)
 

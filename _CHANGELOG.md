@@ -660,3 +660,39 @@ New fixtures can now be uploaded in the test host via `upload_contract_wasm` (ve
 
 **Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
 
+## 2026-11-20 — docs/migration-guide-phase-1 (Issue #100)
+
+### Changes
+
+**docs/migration-guide.md** — New standalone migration guide for users upgrading
+from the pre-Phase 1 contract.
+
+**_CHANGELOG.md** — This entry.
+
+### Changes detail
+
+Documents each breaking change from the "BREAKING changes summary for Phase 1"
+section of `_CHANGELOG.md` with what changed, why, and what a caller or
+integrator must update:
+
+1. `initialize` takes a new required argument: `voting_period: u32`.
+2. `get_config` and `get_admin` return `Result<_, Error>` instead of bare values.
+3. `proposal.executable_at` is `0` until `finalize()` is called.
+4. `finalize()` now requires the voting period to have ended (returns
+   `VotingStillActive` if called too early); previously it required
+   `executable_at` to have passed.
+5. `cancel()` now returns `ProposalFinalized` for `Defeated` proposals too.
+
+Each change includes before/after examples (Rust SDK client and CLI where
+relevant) and a quick reference table.
+
+**Why:** There is no standalone migration guide for users upgrading from the
+pre-Phase 1 contract, even though `_CHANGELOG.md` documents the five Phase 1
+breaking changes. Integrators need a single document explaining what changed,
+why, and what to update, with concrete before/after examples.
+
+**BREAKING:** Documents existing Phase 1 breaking changes; introduces none.
+
+**Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only; no
+contract source or test changes.)
+

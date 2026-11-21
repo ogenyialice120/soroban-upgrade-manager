@@ -87,27 +87,23 @@ soroban-upgrade-manager/
 
 ### Proposal Lifecycle
 
-```
-propose_upgrade()           voting_ends_at
-      │                      │
-      ▼                      ▼
-  [Active] ── vote() × N ──► finalize()
-                               │
-                    pass? ──────┴──── fail?
-                     │                  │
-                     ▼                  ▼
-                 [Queued]          [Defeated]
-                     │
-              timelock_delay
-              (from finalize)
-                     │
-                     ▼
-                execute()
-                     │
-                     ▼
-                [Executed]
+```mermaid
+stateDiagram-v2
+    [*] --> Active : propose_upgrade()\n(proposer signs)
 
-  cancel() (admin only) ──► [Cancelled]  (from Active or Queued)
+    Active --> Active : vote(approve=true/false)\n(while ledger ≤ voting_ends_at)
+
+    Active --> Queued : finalize()\n(voting ended AND quorum + threshold met)
+    Active --> Defeated : finalize()\n(voting ended AND quorum or threshold not met)
+
+    Queued --> Executed : execute()\n(ledger ≥ executable_at)
+
+    Active --> Cancelled : cancel()\n(admin only)
+    Queued --> Cancelled : cancel()\n(admin only)
+
+    Executed --> [*]
+    Defeated --> [*]
+    Cancelled --> [*]
 ```
 
 The voting period (`voting_period` ledgers) runs from proposal creation to

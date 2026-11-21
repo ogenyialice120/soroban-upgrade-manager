@@ -727,3 +727,34 @@ easier to maintain when new states are added.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+---
+
+## 2026-11-20 — design/description-hash-storage (Issue #114)
+
+### Changes
+
+**docs/design/description-hash-storage.md** — New design document analyzing
+the description hash storage proposal.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** Issue #114 asks whether storing `description_hash: BytesN<32>` instead
+of `description: String` (up to 256 bytes) would reduce storage costs. This
+design document concludes the change is **not recommended**: the saving is at
+most ~224 bytes per proposal (marginal at Stellar's storage pricing), the
+contract already has a `metadata_hash: BytesN<32>` field for off-chain content,
+the description field is the primary human-readable label used by wallets and
+explorers (losing on-chain readability is a real UX cost), and the backward-
+compatibility problem is severe (existing proposals stored with the old `String`
+layout would become unreadable). The design document describes the full
+implementation path if a maintainer disagrees and wants to proceed, including
+the struct change, validation removal, two new error codes that become dead
+code, four tests, and affected files.
+
+**BREAKING:** None — this is a design-only document. If the change is
+implemented, `propose_upgrade` gains a `description_hash: BytesN<32>` argument
+(breaking), and old on-chain proposals become unreadable (data-breaking).
+
+**Test results:** N/A — design document only; no contract code changes.
+
+Closes #114

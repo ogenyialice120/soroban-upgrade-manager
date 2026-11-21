@@ -727,3 +727,28 @@ easier to maintain when new states are added.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+---
+
+## 2026-11-21 — docs/release-process-94 (Issue #94)
+
+### Changes
+
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
+
+Covers:
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
+
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
+
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
+
+**BREAKING:** None. New documentation file only.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

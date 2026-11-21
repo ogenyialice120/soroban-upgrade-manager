@@ -729,36 +729,26 @@ easier to maintain when new states are added.
 
 ---
 
-## 2026-11-20 — design/multi-target-upgrade (Issue #120)
+## 2026-11-21 — docs/release-process-94 (Issue #94)
 
 ### Changes
 
-**docs/design/multi-target-upgrade.md** — New design document for multi-target
-upgrade in a single proposal.
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
 
-**_CHANGELOG.md** — This entry.
+Covers:
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
 
-**Why:** A single proposal can currently upgrade only one contract. Coordinated
-protocol upgrades that must replace multiple contracts atomically require
-separate proposals with no on-chain guarantee they all pass or all fail
-together. This design replaces `target: Address` and `new_wasm_hash: BytesN<32>`
-in `Proposal` with parallel `targets: Vec<Address>` and
-`new_wasm_hashes: Vec<BytesN<32>>`. Atomicity is guaranteed at no extra
-implementation cost: Soroban transactions are atomic, so if any `invoke_upgrade`
-call in the execution loop panics, the host reverts the entire transaction
-(including the `Executed` status update) and the proposal returns to `Queued`.
-A new `max_targets: u32` field in `Config` bounds vector length to prevent gas
-abuse. Four new error codes are proposed (25–28). Thirteen tests are listed
-covering single-target compatibility, multi-target creation and execution,
-length mismatches, bound violations, atomicity proofs, and full governance flows.
-Approximately 40 existing test call sites require mechanical updates to pass
-single-element vectors instead of scalar arguments.
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
 
-**BREAKING:** When implemented, `propose_upgrade` replaces `target: Address`
-and `new_wasm_hash: BytesN<32>` with `targets: Vec<Address>` and
-`new_wasm_hashes: Vec<BytesN<32>>`. All existing callers must update. The
-`Proposal` struct fields change similarly.
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
 
-**Test results:** N/A — design document only; no contract code changes.
+**BREAKING:** None. New documentation file only.
 
-Closes #120
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

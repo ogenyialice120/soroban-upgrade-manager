@@ -752,3 +752,31 @@ Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, 
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+
+---
+
+## 2026-11-21 — docs/ci-documentation-91 (Issue #91)
+
+### Changes
+
+**docs/ci-documentation.md** — New file. Documents every step in the CI workflow (`ci.yml`) and the release workflow (`release.yml`).
+
+For each CI step covers: what the command does, why it matters, what a failure means, and the exact local command to reproduce and fix it. Steps documented:
+1. Checkout (`actions/checkout@v4`)
+2. Install Rust toolchain (1.88.0, `wasm32v1-none`, rustfmt, clippy via `dtolnay/rust-toolchain@stable`)
+3. Cache Rust dependencies (`actions/cache@v4`, keyed on `Cargo.lock` hash)
+4. Check formatting (`cargo fmt --all -- --check`)
+5. Run clippy (`cargo clippy --workspace --all-targets -- -D warnings`)
+6. Build native (`cargo build --workspace`)
+7. Run tests (`cargo test --workspace`)
+8. Build WASM (`cargo build --target wasm32v1-none --release`)
+9. Verify claims audit (`bash scripts/check_claims.sh`)
+10. Verify fixture checksums (`sha256sum -c SHA256SUMS`)
+
+The release workflow section covers the `v*` tag trigger, the WASM build, SHA-256 computation, and `softprops/action-gh-release@v2` release creation. Includes a quick-reference table of all commands for local reproduction.
+
+**Why:** The CI workflow ran several non-obvious steps (claims audit, fixture checksum verification) with no explanation of what they check or how to fix failures. Contributors had to read the YAML and the scripts themselves to understand what was happening.
+
+**BREAKING:** None. New documentation file only.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.

@@ -727,3 +727,33 @@ easier to maintain when new states are added.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+---
+
+## 2026-11-21 — docs/contributor-onboarding-90 (Issue #90)
+
+### Changes
+
+**docs/contributor-onboarding.md** — New file. Step-by-step onboarding guide for new contributors.
+
+Covers:
+- Prerequisites: Rust 1.88.0 (pinned in `rust-toolchain.toml`), Stellar CLI v22+.
+- Clone the repository.
+- Install the pinned toolchain and add `wasm32v1-none` target (`rustup target add wasm32v1-none`).
+- Native build: `cargo build --workspace`.
+- WASM build: `cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml`.
+- Run all tests: `cargo test --workspace`.
+- Linters: `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets -- -D warnings`, matching CI and CONTRIBUTING.md.
+- Validate claims audit: `bash scripts/check_claims.sh`.
+- Read `docs/claims-audit.md` to understand the claim→function→test mapping.
+- Find a good-first-issue on GitHub.
+- Project structure diagram covering `contracts/upgrade-manager`, `contracts/example-target`, `scripts/`, and `docs/`.
+- Quick-reference command table.
+
+All commands match `CONTRIBUTING.md` and `.github/workflows/ci.yml` exactly.
+
+**Why:** `CONTRIBUTING.md` has prerequisites and PR guidelines but no step-by-step path for a new contributor to go from zero to a passing build and test suite. New contributors had to assemble the steps from README, CONTRIBUTING.md, and CI config separately.
+
+**BREAKING:** None. New documentation file only.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

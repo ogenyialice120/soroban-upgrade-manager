@@ -443,6 +443,38 @@ mod tests {
         assert_eq!(p.yes_votes, 0);
     }
 
+    /// Creating 5 proposals assigns sequential IDs 0–4 and all remain Active.
+    #[test]
+    fn test_many_proposals_sequential_ids() {
+        let (env, admin, _cid, client) = setup();
+
+        // Five distinct targets.
+        let targets: std::vec::Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
+
+        let mut ids: std::vec::Vec<u64> = std::vec::Vec::new();
+        for (i, target) in targets.iter().enumerate() {
+            let id = client.propose_upgrade(
+                &admin,
+                target,
+                &zero_hash(&env),
+                &title(&env, &std::format!("proposal {i}")),
+                &desc(&env, &std::format!("description {i}")),
+                &zero_hash(&env),
+            );
+            ids.push(id);
+        }
+
+        // IDs must be sequential starting at 0.
+        assert_eq!(ids, std::vec![0u64, 1u64, 2u64, 3u64, 4u64]);
+
+        // All proposals must be Active and have the correct unique target.
+        for (i, id) in ids.iter().enumerate() {
+            let p = client.get_proposal(id);
+            assert_eq!(p.status, ProposalStatus::Active);
+            assert_eq!(p.target, targets[i]);
+        }
+    }
+
     #[test]
     fn test_description_too_long() {
         let (env, admin, _cid, client) = setup();

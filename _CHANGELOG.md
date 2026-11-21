@@ -727,3 +727,34 @@ easier to maintain when new states are added.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+---
+
+## 2026-11-20 — design/per-proposal-voting-params (Issue #129)
+
+### Changes
+
+**docs/design/per-proposal-voting-params.md** — New design document for
+configurable per-proposal voting parameters.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** All proposals currently inherit the same global `Config` values.
+There is no way to create an emergency proposal with a shorter timelock versus
+a standard proposal with a longer one. This design proposes a `ParamBounds`
+struct added to `Config` (admin-set, `Option`al) that declares a `[min, max]`
+range for each of the four governance parameters. A new optional
+`ProposalParams` argument to `propose_upgrade` lets proposers override any
+parameter within those bounds. When `config.param_bounds` is `None`, override
+attempts fail with `PerProposalOverridesDisabled`, preserving the current
+behavior exactly. Three new error codes are proposed (25–27). No existing
+test or on-chain guarantee is weakened: snapshot isolation is preserved, the
+bounds themselves are validated, and the global config still applies when no
+override is given. Nineteen tests are listed covering valid overrides, partial
+overrides, bound violations, and full governance flows with per-proposal params.
+
+**BREAKING:** When implemented, `propose_upgrade` gains a new trailing
+`params: Option<ProposalParams>` argument. Existing callers must pass `None`.
+
+**Test results:** N/A — design document only; no contract code changes.
+
+Closes #129

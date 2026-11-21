@@ -696,3 +696,43 @@ why, and what to update, with concrete before/after examples.
 **Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only; no
 contract source or test changes.)
 
+---
+
+## 2026-10-31 — docs/faq (issue #80)
+
+### Changes
+
+**docs/faq.md** (new file)
+
+17 Q&A pairs covering:
+
+1. Token-weighted voting (not supported; would require changes to `cast_vote`)
+2. Sybil resistance (none; one-address-one-vote with no stake requirement)
+3. Admin key compromise (can cancel/config-change, cannot execute without vote)
+4. Recovery from a bad upgrade (re-propose old hash or redeploy)
+5. No-expiry proposals (stay Active until `finalize()` is called)
+6. Timelock start point (starts at `finalize()`, not at proposal creation)
+7. Voting after voting period ends (`VotingPeriodEnded`, inclusive boundary)
+8. `finalize()` at exact voting boundary (`VotingStillActive`, strict greater-than)
+9. Config changes mid-proposal (snapshot isolation, does not affect in-flight proposals)
+10. When `execute()` is callable (Queued + `ledger >= executable_at`, permissionless)
+11. Admin cancelling an approved Queued proposal (possible; deliberate safety valve)
+12. Proposal spam (no deposit required; admin can cancel; get_proposals paginates)
+13. Target authentication requirement (`manager.require_auth()` mandatory in `upgrade()`)
+14. WASM hash verification (`sha256sum` + `stellar contract upload` comparison)
+15. Multisig admin (`transfer_admin` to a multisig contract address)
+16. Storage-layout incompatibility (no on-chain check; run compatibility check first)
+17. Testnet deployment (walkthrough.md + README testnet section)
+
+Every answer cites the implementing function, test name, or existing
+documentation section where applicable.
+
+**Why:** Common questions about the contract are scattered across the README's
+Security Model section and the walkthrough's Failure Modes table. Neither is
+structured for quick lookup. A dedicated FAQ reduces the time needed to find
+answers to recurring questions.
+
+**BREAKING:** None. New file only; no contract source changes.
+
+**Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only.)
+

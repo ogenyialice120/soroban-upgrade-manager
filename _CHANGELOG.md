@@ -729,21 +729,24 @@ easier to maintain when new states are added.
 
 ---
 
-## 2026-11-21 — docs/error-troubleshooting-85 (Issue #85)
+## 2026-11-21 — docs/release-process-94 (Issue #94)
 
 ### Changes
 
-**docs/error-troubleshooting.md** — New file. Error-code troubleshooting reference for all 24 `Error` variants defined in `contracts/upgrade-manager/src/types.rs`.
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
 
-For each error code, the page documents:
-- The error code, name, common cause, steps to debug or fix, and the test in `test.rs` that triggers it (cross-referenced from `docs/claims-audit.md`).
-- Code 8 (`ProposalDefeated`) is explicitly marked as never returned, matching the README error table and the REWORDED entry in `claims-audit.md`.
-- Codes 20–24 (`EmptyTitle`, `TitleTooLong`, `HasDelegated`, `CannotDelegateToSelf`, `NotDelegating`) are included beyond the 19 listed in the README error table, matching the full enum in `types.rs`.
-- A quick-reference table at the end summarising all 24 codes.
+Covers:
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
 
-Every error code and name matches `types.rs` exactly. Every cited test name exists in `test.rs` (verified with `grep`).
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
 
-**Why:** The README has an error-code table with code, name, trigger, and fix, but no troubleshooting guidance. A dedicated page provides common causes, debugging steps, and test cross-references that would help a developer diagnose failures faster.
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
 
 **BREAKING:** None. New documentation file only.
 

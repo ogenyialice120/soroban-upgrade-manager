@@ -729,29 +729,24 @@ easier to maintain when new states are added.
 
 ---
 
-## 2026-11-21 — docs/contributor-onboarding-90 (Issue #90)
+## 2026-11-21 — docs/release-process-94 (Issue #94)
 
 ### Changes
 
-**docs/contributor-onboarding.md** — New file. Step-by-step onboarding guide for new contributors.
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
 
 Covers:
-- Prerequisites: Rust 1.88.0 (pinned in `rust-toolchain.toml`), Stellar CLI v22+.
-- Clone the repository.
-- Install the pinned toolchain and add `wasm32v1-none` target (`rustup target add wasm32v1-none`).
-- Native build: `cargo build --workspace`.
-- WASM build: `cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml`.
-- Run all tests: `cargo test --workspace`.
-- Linters: `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets -- -D warnings`, matching CI and CONTRIBUTING.md.
-- Validate claims audit: `bash scripts/check_claims.sh`.
-- Read `docs/claims-audit.md` to understand the claim→function→test mapping.
-- Find a good-first-issue on GitHub.
-- Project structure diagram covering `contracts/upgrade-manager`, `contracts/example-target`, `scripts/`, and `docs/`.
-- Quick-reference command table.
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
 
-All commands match `CONTRIBUTING.md` and `.github/workflows/ci.yml` exactly.
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
 
-**Why:** `CONTRIBUTING.md` has prerequisites and PR guidelines but no step-by-step path for a new contributor to go from zero to a passing build and test suite. New contributors had to assemble the steps from README, CONTRIBUTING.md, and CI config separately.
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
 
 **BREAKING:** None. New documentation file only.
 

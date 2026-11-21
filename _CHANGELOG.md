@@ -727,3 +727,25 @@ easier to maintain when new states are added.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+---
+
+## 2026-11-21 — docs/error-troubleshooting-85 (Issue #85)
+
+### Changes
+
+**docs/error-troubleshooting.md** — New file. Error-code troubleshooting reference for all 24 `Error` variants defined in `contracts/upgrade-manager/src/types.rs`.
+
+For each error code, the page documents:
+- The error code, name, common cause, steps to debug or fix, and the test in `test.rs` that triggers it (cross-referenced from `docs/claims-audit.md`).
+- Code 8 (`ProposalDefeated`) is explicitly marked as never returned, matching the README error table and the REWORDED entry in `claims-audit.md`.
+- Codes 20–24 (`EmptyTitle`, `TitleTooLong`, `HasDelegated`, `CannotDelegateToSelf`, `NotDelegating`) are included beyond the 19 listed in the README error table, matching the full enum in `types.rs`.
+- A quick-reference table at the end summarising all 24 codes.
+
+Every error code and name matches `types.rs` exactly. Every cited test name exists in `test.rs` (verified with `grep`).
+
+**Why:** The README has an error-code table with code, name, trigger, and fix, but no troubleshooting guidance. A dedicated page provides common causes, debugging steps, and test cross-references that would help a developer diagnose failures faster.
+
+**BREAKING:** None. New documentation file only.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

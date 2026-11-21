@@ -2345,6 +2345,58 @@ mod tests {
         );
     }
 
+    /// `voting_period = u32::MAX` is accepted (validate_config only rejects 0) and
+    /// `voting_ends_at` is computed correctly without overflow when the ledger
+    /// sequence is 0 at proposal creation time.
+    ///
+    /// With ledger sequence 0 at creation: `voting_ends_at = 0 + u32::MAX = u32::MAX`.
+    #[test]
+    fn test_max_voting_period() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+
+        // Initialize with voting_period = u32::MAX; other params use safe small values.
+        client.initialize(&admin, &u32::MAX, &1u32, &1u32, &51u32);
+
+        let starting_ledger = env.ledger().sequence();
+
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "max voting period"),
+            &desc(&env, "tests u32::MAX voting_period"),
+            &zero_hash(&env),
+        );
+
+        let proposal = client.get_proposal(&id);
+
+        assert_eq!(
+            proposal.status,
+            ProposalStatus::Active,
+            "proposal must be Active after creation"
+        );
+
+        // voting_ends_at = starting_ledger + u32::MAX, with no overflow when
+        // starting_ledger == 0.
+        let expected_voting_ends_at = starting_ledger
+            .checked_add(u32::MAX)
+            .expect("overflow in test: starting_ledger must be low enough");
+        assert_eq!(
+            proposal.voting_ends_at, expected_voting_ends_at,
+            "voting_ends_at must equal starting_ledger + u32::MAX"
+        );
+        assert_eq!(
+            proposal.snap_voting_period,
+            u32::MAX,
+            "snapshot voting period must equal u32::MAX"
+        );
+    }
+
     /// Delegation event is emitted when delegating.
     #[test]
     fn test_delegation_event_emitted() {

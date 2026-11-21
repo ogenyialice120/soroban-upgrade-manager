@@ -696,3 +696,38 @@ why, and what to update, with concrete before/after examples.
 **Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only; no
 contract source or test changes.)
 
+---
+
+## 2026-10-31 — docs/choosing-parameters (issue #83)
+
+### Changes
+
+**docs/choosing-parameters.md** (new file)
+
+- Explains each of the four governance parameters (`voting_period`,
+  `timelock_delay`, `quorum`, `approval_threshold_pct`) with trade-off
+  discussion.
+- Includes a ledger-to-time conversion table (1 h ≈ 720, 24 h ≈ 17 280,
+  7 d ≈ 120 960) using the documented ~5 s/ledger approximation. All
+  conversions verified: 3 600 s/hour ÷ 5 s/ledger = 720 ledgers/hour.
+- Three worked scenarios with full `initialize` CLI commands and reasoning:
+  small trusted team (1 hour windows, quorum 2), public DAO (7-day voting,
+  48-hour timelock, supermajority), emergency upgrade path (1-hour windows,
+  quorum 3).
+- Dedicated section on the sybil-resistance limitation and its impact:
+  quorum counts addresses not stake, timelock is the more reliable safety
+  mechanism, admin-as-multisig recommended for high-value contracts.
+- Validation rules table mapping each parameter to its minimum and the error
+  returned on violation.
+- Notes on changing parameters after deployment and config snapshot isolation.
+
+**Why:** The README lists the four parameters with types and minimums but
+provides no guidance on how to choose them. Without worked examples, users
+default to the walkthrough values (voting_period=17280, quorum=3) regardless
+of their actual deployment context. This guide provides concrete starting
+points for different scenarios.
+
+**BREAKING:** None. New file only; no contract source changes.
+
+**Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only.)
+

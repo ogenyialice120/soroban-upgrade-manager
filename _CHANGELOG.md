@@ -729,34 +729,26 @@ easier to maintain when new states are added.
 
 ---
 
-## 2026-11-20 — design/vote-ttl-strategy (Issue #115)
+## 2026-11-21 — docs/release-process-94 (Issue #94)
 
 ### Changes
 
-**docs/design/vote-ttl-strategy.md** — New design document analyzing cheaper
-TTL strategies for vote entries.
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
 
-**_CHANGELOG.md** — This entry.
+Covers:
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
 
-**Why:** Each vote is stored as a persistent entry with `PERSISTENT_TTL_BUMP =
-2_592_000` ledgers (~150 days), regardless of the proposal's actual lifetime.
-For a proposal with N voters and a short voting period, all N entries pay
-150-day rent unnecessarily. This design document analyzes four alternatives
-(shorter TTL tied to proposal lifetime, bitmap in instance storage, vote counts
-only, and an explicit `cleanup_votes` function) and recommends implementing
-Alternative 4.1: set the vote entry TTL to `max(voting_period +
-timelock_delay + 50_000, MIN_VOTE_TTL)` at record time. For a typical
-7-day voting + 1-day timelock proposal, this is a ~15× TTL reduction with no
-behavioral change — double-vote prevention is preserved as long as the entry
-survives past `voting_ends_at`. Bitmap storage is rejected (64 KB instance
-limit, no O(1) lookup), and removing per-voter records entirely is rejected
-(breaks double-vote prevention). The `cleanup_votes` API is documented as an
-independent follow-up. Five tests are listed.
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
 
-**BREAKING:** When implemented, `record_vote` requires the `Proposal` struct
-to compute the per-proposal TTL (internal signature change). No public API
-changes.
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
 
-**Test results:** N/A — design document only; no contract code changes.
+**BREAKING:** None. New documentation file only.
 
-Closes #115
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

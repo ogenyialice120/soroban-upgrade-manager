@@ -727,3 +727,36 @@ easier to maintain when new states are added.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+---
+
+## 2026-11-20 — design/vote-ttl-strategy (Issue #115)
+
+### Changes
+
+**docs/design/vote-ttl-strategy.md** — New design document analyzing cheaper
+TTL strategies for vote entries.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** Each vote is stored as a persistent entry with `PERSISTENT_TTL_BUMP =
+2_592_000` ledgers (~150 days), regardless of the proposal's actual lifetime.
+For a proposal with N voters and a short voting period, all N entries pay
+150-day rent unnecessarily. This design document analyzes four alternatives
+(shorter TTL tied to proposal lifetime, bitmap in instance storage, vote counts
+only, and an explicit `cleanup_votes` function) and recommends implementing
+Alternative 4.1: set the vote entry TTL to `max(voting_period +
+timelock_delay + 50_000, MIN_VOTE_TTL)` at record time. For a typical
+7-day voting + 1-day timelock proposal, this is a ~15× TTL reduction with no
+behavioral change — double-vote prevention is preserved as long as the entry
+survives past `voting_ends_at`. Bitmap storage is rejected (64 KB instance
+limit, no O(1) lookup), and removing per-voter records entirely is rejected
+(breaks double-vote prevention). The `cleanup_votes` API is documented as an
+independent follow-up. Five tests are listed.
+
+**BREAKING:** When implemented, `record_vote` requires the `Proposal` struct
+to compute the per-proposal TTL (internal signature change). No public API
+changes.
+
+**Test results:** N/A — design document only; no contract code changes.
+
+Closes #115

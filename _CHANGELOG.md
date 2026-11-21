@@ -729,32 +729,26 @@ easier to maintain when new states are added.
 
 ---
 
-## 2026-11-20 — design/description-hash-storage (Issue #114)
+## 2026-11-21 — docs/release-process-94 (Issue #94)
 
 ### Changes
 
-**docs/design/description-hash-storage.md** — New design document analyzing
-the description hash storage proposal.
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
 
-**_CHANGELOG.md** — This entry.
+Covers:
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
 
-**Why:** Issue #114 asks whether storing `description_hash: BytesN<32>` instead
-of `description: String` (up to 256 bytes) would reduce storage costs. This
-design document concludes the change is **not recommended**: the saving is at
-most ~224 bytes per proposal (marginal at Stellar's storage pricing), the
-contract already has a `metadata_hash: BytesN<32>` field for off-chain content,
-the description field is the primary human-readable label used by wallets and
-explorers (losing on-chain readability is a real UX cost), and the backward-
-compatibility problem is severe (existing proposals stored with the old `String`
-layout would become unreadable). The design document describes the full
-implementation path if a maintainer disagrees and wants to proceed, including
-the struct change, validation removal, two new error codes that become dead
-code, four tests, and affected files.
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
 
-**BREAKING:** None — this is a design-only document. If the change is
-implemented, `propose_upgrade` gains a `description_hash: BytesN<32>` argument
-(breaking), and old on-chain proposals become unreadable (data-breaking).
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
 
-**Test results:** N/A — design document only; no contract code changes.
+**BREAKING:** None. New documentation file only.
 
-Closes #114
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

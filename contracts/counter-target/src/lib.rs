@@ -22,6 +22,11 @@
 
 #![no_std]
 
+// Tests run as a native binary and need std, even though the library
+// crate is #![no_std] for the WASM target.
+#[cfg(test)]
+extern crate std;
+
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
 
 #[contract]
@@ -39,7 +44,7 @@ impl CounterTarget {
     }
 
     /// Return the current count. Defaults to `0` before the first increment.
-    pub fn get_count(env: Env) -> u32 {
+    pub fn get_count(env: &Env) -> u32 {
         env.storage()
             .instance()
             .get(&soroban_sdk::symbol_short!("count"))
@@ -49,7 +54,7 @@ impl CounterTarget {
     /// Increase the count by 1 (by 2 with the `v2` feature flag) and return
     /// the new count.
     pub fn increment(env: Env) -> u32 {
-        let count = Self::get_count(env);
+        let count = Self::get_count(&env);
         let new_count = count.saturating_add(increment_delta());
         env.storage()
             .instance()
@@ -98,7 +103,8 @@ fn increment_delta() -> u32 {
 #[cfg(test)]
 mod test {
     use crate::{CounterTarget, CounterTargetClient};
-    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+    use soroban_sdk::{testutils::Address as _, Address, Env};
+    use std::format;
 
     /// Builds (or reuses) this crate's `v2` feature WASM and returns its
     /// bytes. Building at runtime keeps the test self-contained (no committed
@@ -106,19 +112,20 @@ mod test {
     /// `v2` feature source. Requires the `wasm32v1-none` target, which the
     /// acceptance criteria assume is installed.
     fn v2_wasm_bytes(env: &Env) -> soroban_sdk::Bytes {
-        use std::path::PathBuf;
-
         let manifest_dir =
             std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set for host tests");
         let artifact = format!("{}.wasm", env!("CARGO_PKG_NAME").replace('-', "_"));
-        let wasm_path = PathBuf::from(&manifest_dir)
+        // Workspace target is two levels up from the crate manifest dir.
+        let wasm_path = std::path::PathBuf::from(&manifest_dir)
+            .join("..")
+            .join("..")
             .join("target")
             .join("wasm32v1-none")
             .join("release")
             .join(&artifact);
 
         if !wasm_path.exists() {
-            let manifest_path = PathBuf::from(&manifest_dir).join("Cargo.toml");
+            let manifest_path = std::path::PathBuf::from(&manifest_dir).join("Cargo.toml");
             let status = std::process::Command::new("cargo")
                 .args([
                     "build",
@@ -167,11 +174,7 @@ mod test {
             1,
             "count must persist across the upgrade"
         );
-        assert_eq!(
-            client.increment(),
-            3,
-            "v2 increment must add 2 (1 + 2 = 3)"
-        );
+        assert_eq!(client.increment(), 3, "v2 increment must add 2 (1 + 2 = 3)");
         assert_eq!(client.get_count(), 3);
     }
 }

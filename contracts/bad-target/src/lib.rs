@@ -60,7 +60,7 @@ impl BadTarget {
 #[cfg(test)]
 mod test {
     use crate::{BadTarget, BadTargetClient};
-    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     /// Anyone can call `upgrade()` without the manager's authorization because
     /// `upgrade()` never calls `manager.require_auth()`.

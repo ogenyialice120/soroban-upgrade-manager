@@ -729,22 +729,24 @@ easier to maintain when new states are added.
 
 ---
 
-## 2026-11-21 — docs/storage-layout-86 (Issue #86)
+## 2026-11-21 — docs/release-process-94 (Issue #94)
 
 ### Changes
 
-**docs/storage-layout.md** — New file. Storage layout and TTL reference for the upgrade-manager contract.
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
 
 Covers:
-- TTL constants: `INSTANCE_TTL_BUMP` = 518 400 ledgers (≈ 30 days) and `PERSISTENT_TTL_BUMP` = 2 592 000 ledgers (≈ 150 days), sourced from `types.rs`.
-- A table mapping every `DataKey` variant to its storage type (instance vs persistent) and the TTL constant applied.
-- Per-key detail sections explaining what each key stores, which helper reads/writes it, and when TTL is extended.
-- Explanation of when TTL is extended: on write for all keys; on read for `Proposal(u64)` only (via `load_proposal`); instance TTL is also bumped inside `save_proposal`.
-- Storage type rationale (singleton instance keys vs per-proposal/voter persistent keys).
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
 
-Every storage key, TTL constant, and helper function reference matches `types.rs` and `governance.rs` exactly. Covers all 7 `DataKey` variants including `Delegation` and `DelegationCount`.
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
 
-**Why:** No document explained which keys use instance vs persistent storage, what the TTL constants mean in real time, or when TTL is extended. Developers integrating with the contract or auditing its storage behaviour had to read the source to find this information.
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
 
 **BREAKING:** None. New documentation file only.
 

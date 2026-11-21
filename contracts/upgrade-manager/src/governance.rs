@@ -179,10 +179,10 @@ pub fn delegation_count(env: &Env, delegate: &Address) -> u32 {
     // the count in a separate counter updated on delegate/revoke.
     // This is stored as DataKey::DelegationCount(delegate) internally via
     // the save/remove_delegation_count helpers.
-    match env.storage().persistent().get::<u32>(&DataKey::DelegationCount(delegate.clone())) {
-        Some(c) => c,
-        None => 0,
-    }
+    env.storage()
+        .persistent()
+        .get::<DataKey, u32>(&DataKey::DelegationCount(delegate.clone()))
+        .unwrap_or_default()
 }
 
 /// Increment the delegation count for `delegate`.
@@ -245,7 +245,7 @@ pub fn delegate(env: &Env, voter: Address, delegate_to: Address) -> Result<(), E
     increment_delegation_count(env, &delegate_to);
 
     env.events().publish(
-        (symbol_short!("delegation"), symbol_short!("delegated")),
+        (symbol_short!("delegat"), symbol_short!("delegated")),
         (voter, delegate_to),
     );
 
@@ -266,10 +266,8 @@ pub fn revoke_delegation(env: &Env, voter: Address) -> Result<(), Error> {
     remove_delegation(env, &voter);
     decrement_delegation_count(env, &delegate);
 
-    env.events().publish(
-        (symbol_short!("delegation"), symbol_short!("revoked")),
-        voter,
-    );
+    env.events()
+        .publish((symbol_short!("delegat"), symbol_short!("revoked")), voter);
 
     Ok(())
 }
@@ -392,7 +390,7 @@ pub fn cast_vote(env: &Env, proposal_id: u64, voter: Address, approve: bool) -> 
     }
 
     // Vote weight = 1 (self) + number of delegators.
-    let weight: u32 = 1
+    let weight: u32 = 1u32
         .checked_add(delegation_count(env, &voter))
         .ok_or(Error::Overflow)?;
 

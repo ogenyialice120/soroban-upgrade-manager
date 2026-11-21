@@ -25,7 +25,7 @@ mod governance;
 mod timelock;
 mod types;
 
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, vec, Address, BytesN, Env, String, Vec};
 
 use governance::{
     cancel_proposal, cast_vote, create_proposal, delegate, emit_admin_transferred,
@@ -35,7 +35,7 @@ use governance::{
 };
 use timelock::{assert_timelock_passed, ledgers_until_executable};
 use types::{
-    Config, DataKey, Error, Proposal, ProposalStatus, INSTANCE_TTL_BUMP,
+    Config, DataKey, Error, Proposal, ProposalStatus, INSTANCE_TTL_BUMP, MAX_PROPOSALS_PAGE_LIMIT,
 };
 
 // ---------------------------------------------------------------------------
@@ -185,7 +185,15 @@ impl UpgradeManager {
         metadata_hash: BytesN<32>,
     ) -> Result<u64, Error> {
         proposer.require_auth();
-        create_proposal(&env, proposer, target, new_wasm_hash, title, description, metadata_hash)
+        create_proposal(
+            &env,
+            proposer,
+            target,
+            new_wasm_hash,
+            title,
+            description,
+            metadata_hash,
+        )
     }
 
     /// Vote on an active proposal.
@@ -227,11 +235,7 @@ impl UpgradeManager {
     /// # Errors
     /// - `CannotDelegateToSelf` — caller cannot delegate to themselves.
     /// - `HasDelegated`         — delegate has already delegated (no transitive).
-    pub fn delegate(
-        env: Env,
-        caller: Address,
-        delegate_to: Address,
-    ) -> Result<(), Error> {
+    pub fn delegate(env: Env, caller: Address, delegate_to: Address) -> Result<(), Error> {
         delegate(&env, caller, delegate_to)
     }
 
@@ -333,7 +337,7 @@ impl UpgradeManager {
         let count = env
             .storage()
             .instance()
-            .get::<u64>(&DataKey::ProposalCount)
+            .get::<DataKey, u64>(&DataKey::ProposalCount)
             .unwrap_or(0u64);
 
         if offset >= count || limit == 0 {
@@ -341,10 +345,7 @@ impl UpgradeManager {
         }
 
         let limit = limit.min(MAX_PROPOSALS_PAGE_LIMIT);
-        let end = offset
-            .checked_add(limit as u64)
-            .unwrap_or(count)
-            .min(count);
+        let end = offset.checked_add(limit as u64).unwrap_or(count).min(count);
 
         let mut result = Vec::new(&env);
         let mut id = offset;
@@ -387,6 +388,11 @@ impl UpgradeManager {
 // ---------------------------------------------------------------------------
 // Tests — moved to src/test.rs
 // ---------------------------------------------------------------------------
+
+// Tests run as a native binary and need std, even though the library
+// crate is #![no_std] for the WASM target.
+#[cfg(test)]
+extern crate std;
 
 #[cfg(test)]
 mod test;

@@ -727,3 +727,26 @@ easier to maintain when new states are added.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+---
+
+## 2026-11-21 — docs/storage-layout-86 (Issue #86)
+
+### Changes
+
+**docs/storage-layout.md** — New file. Storage layout and TTL reference for the upgrade-manager contract.
+
+Covers:
+- TTL constants: `INSTANCE_TTL_BUMP` = 518 400 ledgers (≈ 30 days) and `PERSISTENT_TTL_BUMP` = 2 592 000 ledgers (≈ 150 days), sourced from `types.rs`.
+- A table mapping every `DataKey` variant to its storage type (instance vs persistent) and the TTL constant applied.
+- Per-key detail sections explaining what each key stores, which helper reads/writes it, and when TTL is extended.
+- Explanation of when TTL is extended: on write for all keys; on read for `Proposal(u64)` only (via `load_proposal`); instance TTL is also bumped inside `save_proposal`.
+- Storage type rationale (singleton instance keys vs per-proposal/voter persistent keys).
+
+Every storage key, TTL constant, and helper function reference matches `types.rs` and `governance.rs` exactly. Covers all 7 `DataKey` variants including `Delegation` and `DelegationCount`.
+
+**Why:** No document explained which keys use instance vs persistent storage, what the TTL constants mean in real time, or when TTL is extended. Developers integrating with the contract or auditing its storage behaviour had to read the source to find this information.
+
+**BREAKING:** None. New documentation file only.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

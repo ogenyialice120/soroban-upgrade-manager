@@ -729,32 +729,26 @@ easier to maintain when new states are added.
 
 ---
 
-## 2026-11-20 — design/per-proposal-voting-params (Issue #129)
+## 2026-11-21 — docs/release-process-94 (Issue #94)
 
 ### Changes
 
-**docs/design/per-proposal-voting-params.md** — New design document for
-configurable per-proposal voting parameters.
+**docs/release-process.md** — New file. Documents the full release process for the upgrade-manager contract.
 
-**_CHANGELOG.md** — This entry.
+Covers:
+- Tag format (`v*`, e.g. `v1.0.0`) matching the `release.yml` workflow trigger.
+- Step-by-step instructions for creating a release (tag and push).
+- What CI does: checkout, install Rust 1.88.0 + `wasm32v1-none` via `dtolnay/rust-toolchain@stable`, cache dependencies, `cargo build --target wasm32v1-none --release`, `sha256sum`, `softprops/action-gh-release@v2`.
+- Artifacts produced: `soroban_upgrade_manager.wasm` and `soroban_upgrade_manager.wasm.sha256`.
+- Verification step: `sha256sum soroban_upgrade_manager.wasm` must match the hash in the release body.
+- Deployment from a release: `stellar contract deploy --wasm soroban_upgrade_manager.wasm --source <ADMIN_KEY> --network <NETWORK>` followed by `initialize`.
+- Version numbering rationale (semver, unaudited pre-1.0.0).
 
-**Why:** All proposals currently inherit the same global `Config` values.
-There is no way to create an emergency proposal with a shorter timelock versus
-a standard proposal with a longer one. This design proposes a `ParamBounds`
-struct added to `Config` (admin-set, `Option`al) that declares a `[min, max]`
-range for each of the four governance parameters. A new optional
-`ProposalParams` argument to `propose_upgrade` lets proposers override any
-parameter within those bounds. When `config.param_bounds` is `None`, override
-attempts fail with `PerProposalOverridesDisabled`, preserving the current
-behavior exactly. Three new error codes are proposed (25–27). No existing
-test or on-chain guarantee is weakened: snapshot isolation is preserved, the
-bounds themselves are validated, and the global config still applies when no
-override is given. Nineteen tests are listed covering valid overrides, partial
-overrides, bound violations, and full governance flows with per-proposal params.
+Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, target `wasm32v1-none`, action `softprops/action-gh-release@v2`, artifact paths, and SHA-256 computation command.
 
-**BREAKING:** When implemented, `propose_upgrade` gains a new trailing
-`params: Option<ProposalParams>` argument. Existing callers must pass `None`.
+**Why:** The repository had a release workflow but no document explaining the release process, the tag format, what CI produces, or how to verify or deploy from a release. Contributors and users had to read the workflow YAML to understand how releases work.
 
-**Test results:** N/A — design document only; no contract code changes.
+**BREAKING:** None. New documentation file only.
 
-Closes #129
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

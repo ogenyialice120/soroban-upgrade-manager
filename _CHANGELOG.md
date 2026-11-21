@@ -752,3 +752,25 @@ Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, 
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+
+---
+
+## 2026-11-21 — docs/checks-effects-interactions-95 (Issue #95)
+
+### Changes
+
+**docs/checks-effects-interactions.md** — New file. Documents the checks-effects-interactions (CEI) pattern as applied in `execute()`.
+
+Covers:
+- Definition of the three phases: checks, effects, interactions.
+- The exact code in `execute()` where the pattern is applied, with inline annotations.
+- What would go wrong without it: double-execution via re-entrancy and the relationship between CEI and Soroban's transaction atomicity.
+- How Soroban's all-or-nothing atomicity makes the rollback automatic when `invoke_upgrade` fails.
+- Reference to `test_failed_upgrade_leaves_proposal_queued` as the verification test, with the key assertions quoted.
+- A summary table mapping each phase to the specific line in `execute()`.
+
+**Why:** The `execute()` function applies CEI in a subtle but critical way — it writes `ProposalStatus::Executed` and calls `save_proposal` before the cross-contract `invoke_upgrade` call. Without this ordering, a re-entrant call or a partial-failure scenario could leave the contract in an inconsistent state. The pattern and its rationale were undocumented, making it easy for a contributor to reorder the lines without realising the security consequence.
+
+**BREAKING:** None. New documentation file only.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.

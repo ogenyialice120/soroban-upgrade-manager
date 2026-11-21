@@ -752,3 +752,23 @@ Every step matches `.github/workflows/release.yml` exactly: toolchain `1.88.0`, 
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
 
+
+---
+
+## 2026-11-21 — test/max-voting-period-59 (Issue #59)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_max_voting_period`.
+
+The test initializes the contract with `voting_period = u32::MAX` and other valid params (`timelock_delay=1`, `quorum=1`, `approval_threshold_pct=51`). It records the actual ledger sequence before creating a proposal, then asserts:
+- Initialization succeeds (no `InvalidVotingPeriod` error since `validate_config` only rejects `0`).
+- The created proposal is `Active`.
+- `voting_ends_at == starting_ledger + u32::MAX` (no overflow, as the default env starts at ledger 0).
+- `snap_voting_period == u32::MAX`.
+
+**Why:** `validate_config` accepts any non-zero `voting_period`, including `u32::MAX`. The `voting_ends_at` computation uses `checked_add` and returns `Overflow` on overflow, but no test previously exercised the boundary value. This test confirms the boundary is handled correctly and that the happy path (no overflow) produces the expected `voting_ends_at`.
+
+**BREAKING:** None. Test-only change.
+
+**Test results:** `cargo fmt --all -- --check` → OK. `cargo clippy --workspace --all-targets -- -D warnings` → OK. `cargo test --workspace` → 85 passed, 0 failed.

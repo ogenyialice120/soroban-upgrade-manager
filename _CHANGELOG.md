@@ -696,3 +696,34 @@ why, and what to update, with concrete before/after examples.
 **Test results:** `bash scripts/check_claims.sh` → OK. (Documentation only; no
 contract source or test changes.)
 
+---
+
+## 2026-10-31 — docs/mermaid-lifecycle-diagram (issue #81)
+
+### Changes
+
+**README.md** — replaced ASCII-art lifecycle diagram with a Mermaid
+`stateDiagram-v2` diagram under "Proposal Lifecycle".
+
+The diagram includes all five `ProposalStatus` variants defined in
+`contracts/upgrade-manager/src/types.rs`:
+- `Active` — created by `propose_upgrade()`; self-loop for `vote()` calls
+- `Queued` — set by `finalize()` when quorum and threshold are met
+- `Defeated` — set by `finalize()` when quorum or threshold not met
+- `Executed` — set by `execute()` after timelock expires
+- `Cancelled` — set by `cancel()` (admin only, from Active or Queued)
+
+Each transition is annotated with the function name and the governing
+condition (e.g., `finalize(): voting ended AND quorum + threshold met`).
+The surrounding prose explaining the two-window design (voting period vs
+timelock) is preserved unchanged.
+
+**Why:** The ASCII-art diagram does not render on GitHub (it displays as plain
+text without alignment). A `stateDiagram-v2` block renders as an interactive
+diagram in GitHub's Markdown preview, is easier to read at a glance, and is
+easier to maintain when new states are added.
+
+**BREAKING:** None. README change only; no contract source changes.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.
+

@@ -777,16 +777,39 @@ Covers:
 
 ---
 
-## 2026-07-11 — test/storage-key-no-collision-76 (Issue #76)
+## 2026-07-11 — docs/glossary-79 (Issue #79)
 
 ### Changes
 
-**contracts/upgrade-manager/src/test.rs** — Added `test_storage_key_no_collision`.
+**docs/glossary.md** — New file. Governance glossary covering every term used
+in the upgrade manager.
 
-The test uses `env.as_contract(&cid, ...)` to write sentinel values directly into persistent storage under `DataKey::Proposal(0)`, `DataKey::Proposal(1)`, `DataKey::Vote(0, voter1)`, `DataKey::Vote(1, voter2)`, and `DataKey::Vote(0, voter2)`, then reads them all back and asserts each value is independent. This confirms that the `DataKey` enum serializes each variant into a unique storage key so no variant can shadow another.
+Defined terms (grouped by theme):
 
-**Why:** The `DataKey` enum has multiple variants including `Proposal(u64)` and `Vote(u64, Address)`. Without a collision test, an accidental change to the enum's discriminant encoding could cause two different keys to map to the same storage slot, silently corrupting state. The test makes this regression detectable.
+- **Proposal lifecycle:** Proposal, Proposer, Voter, Voting Period, Timelock Delay,
+  Cross-Contract Invocation, WASM Hash, Upgrade.
+- **Governance parameters:** Quorum, Approval Threshold, Config Snapshot.
+- **Proposal statuses:** Active, Queued, Defeated, Executed, Cancelled.
+- **Storage concepts:** Instance Storage, Persistent Storage, TTL.
+- **Security patterns:** Checks-Effects-Interactions.
 
-**BREAKING:** None. Test-only change.
+Each entry gives: a plain definition, the term's specific meaning in this
+project, and the exact file and symbol where it is defined or enforced (e.g.,
+`ProposalStatus::Queued` in `contracts/upgrade-manager/src/types.rs`,
+`finalize_voting()` in `contracts/upgrade-manager/src/governance.rs`).
 
-**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 87 passed, 1 pre-existing failure (`test_triple_target_upgrade_v1_to_v2_to_v3_through_manager` — `wasm32v1-none` target not installed in this environment).
+A "See Also" section links to the main reference files:
+`types.rs`, `governance.rs`, `lib.rs`, `timelock.rs`,
+`docs/checks-effects-interactions.md`, `docs/storage-layout.md`,
+`docs/wasm-compatibility.md`, and `docs/walkthrough.md`.
+
+**Why:** The codebase uses a consistent set of governance terms (quorum,
+approval threshold, config snapshot, timelock delay, checks-effects-interactions,
+etc.) but had no single reference defining them. New contributors and auditors
+had to piece together meaning from inline doc comments scattered across four
+source files. The glossary provides one definitive place that cross-references
+every term back to the code where it is enforced.
+
+**BREAKING:** None. New documentation file only; no contract source changes.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.

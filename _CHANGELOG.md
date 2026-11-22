@@ -856,3 +856,17 @@ correct role.
 `cargo clippy --workspace --all-targets -- -D warnings` OK;
 `cargo test --workspace` → 98 passed, 0 failed.
 
+
+## 2026-11-22 — design/count-by-status (Issue #126)
+
+### Changes
+
+**docs/design/count-by-status-view.md** — New design document for the read-only count_by_status view.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** There is no aggregate view counting proposals by status; dashboards must call get_proposals repeatedly and tally client-side. The design proposes a read-only count_by_status() -> Map<ProposalStatus, u64> computed on demand by iterating the dense 0..ProposalCount ID range (O(n) persistent reads, the same per-proposal cost get_proposals already pays). It returns all five statuses including zero counts, is correct by construction (no drift), and adds no storage, auth, or state changes. A cached-counter alternative (5 persistent entries updated on each transition) is documented as a backward-compatible follow-up if query cost or proposal count grows; on-demand is recommended for v1 to avoid write amplification and drift on the state-machine hot path. This touches no existing on-chain guarantee (additive view). No contract code is written until a maintainer approves this design.
+
+**BREAKING:** None.
+
+**Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.

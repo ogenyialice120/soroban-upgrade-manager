@@ -856,3 +856,17 @@ correct role.
 `cargo clippy --workspace --all-targets -- -D warnings` OK;
 `cargo test --workspace` → 98 passed, 0 failed.
 
+
+## 2026-11-22 — design/config-update-events (Issue #124)
+
+### Changes
+
+**docs/design/config-update-events.md** — New design document for including config values in the config_updated event.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** The config_updated event currently publishes only the caller address as data, so config changes can't be audited from event logs without querying storage. The design changes the event data from (caller) to (caller, old_config, new_config), keeping the topics (config, updated) unchanged so existing topic-based filters keep working. Including the old config makes the diff computable from the event alone, since storage history isn't queryable on-chain. The implementation change to update_config is minimal: load_config before save_config to capture the pre-image, then pass old + new to emit_config_updated. update_config's on-chain signature is unchanged, so on-chain callers are unaffected; the breakage is limited to off-chain event-data consumers (indexors/dashboards) parsing the payload positionally, and is flagged as breaking for those consumers. The only existing test referencing the event (test_event_config_updated) needs updating to also assert the data payload; new round-trip, all-fields, and exclusivity tests are listed. No contract code is written until a maintainer approves this design.
+
+**BREAKING:** This PR (design document only) is non-breaking. The proposed implementation is a breaking change for off-chain event-data consumers (config_updated data payload format changes from (caller) to (caller, old_config, new_config)); not breaking for on-chain callers.
+
+**Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.

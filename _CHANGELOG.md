@@ -978,3 +978,33 @@ The test calls `setup()` to initialize the contract (voting_period=100, timelock
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 96 passed, 0 failed.
 
 Closes #66
+
+---
+
+## 2026-11-22 — design/list-proposals-by-status-106 (Issue #106)
+
+### Changes
+
+**DESIGN-list-proposals-by-status.md** — New design document for the read-only list_proposals_by_status view.
+
+### Changes detail
+
+Documents the full design for a filtered paginator over proposals:
+
+- **Function signature:** `list_proposals_by_status(env, status: ProposalStatus, offset: u64, limit: u32) -> Result<Vec<Proposal>, Error>`
+- **Return type:** Full `Proposal` structs (not just IDs) to avoid forcing callers into N follow-up RPC calls per page.
+- **Offset semantics:** `offset` counts matching proposals to skip, not raw proposal IDs. Callers can page through filtered results by incrementing `offset` by `limit` each call.
+- **Gas cost:** O(total proposals) scan — no built-in index or prefix scan exists in Soroban. Acceptable at the contract's intended scale; documented explicitly with rationale.
+- **Secondary index not added:** Would require index maintenance on every state transition (`create_proposal`, `finalize_voting`, `cancel_proposal`, `execute`), adding write complexity and bug surface for limited benefit at expected scale.
+- **No new DataKey:** Pure read over existing `DataKey::Proposal(u64)` entries.
+- **No new errors:** Reuses `NotInitialized` and propagates `ProposalNotFound` from `load_proposal`.
+- **Implementation snippet included:** Full Rust loop logic with `skipped` counter, early-exit on `limit` reached, and `Config` existence guard.
+- **Tests listed:** 8 tests covering matching results, empty cases, offset pagination, limit capping, limit=0, not-initialized, no proposals, and all five status values.
+
+**Why:** Clients and dashboards have no way to query proposals by status without iterating all pages and filtering client-side. The new view makes filtered access a single RPC call, reducing client complexity for the most common dashboard query (show Active proposals, show Queued proposals).
+
+**BREAKING:** None. Design document only; no contract code is written until a maintainer approves.
+
+**Test results:** N/A — design document only. No contract source or test changes.
+
+Closes #106

@@ -813,3 +813,27 @@ every term back to the code where it is enforced.
 **BREAKING:** None. New documentation file only; no contract source changes.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
+
+---
+
+## 2026-11-22 — test/time-until-executable-unknown-id-58 (Issue #58)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added
+`test_time_until_executable_unknown_id_fails`.
+
+- Calls `client.try_time_until_executable(&999u64)` on a freshly initialized
+  manager with no proposals.
+- Asserts the result is `Err(Ok(Error::ProposalNotFound))`, verifying that the
+  getter propagates the `ProposalNotFound` error from `load_proposal` for an
+  unknown ID instead of returning a default such as 0.
+
+**Why:** `time_until_executable` delegates to `load_proposal`, which returns
+`ProposalNotFound` (error code 3) for unknown IDs, but no test covered this
+edge case. Without it, a regression that silently returns `0` (meaning
+"executable now") for a nonexistent proposal would go unnoticed.
+
+**BREAKING:** None. Test-only change; no contract source files were modified.
+
+**Test results:** `cargo test -p soroban-upgrade-manager` → 90 passed, 0 failed.

@@ -1200,6 +1200,16 @@ mod tests {
         assert_eq!(client.time_until_executable(&id), 0u32);
     }
 
+    /// time_until_executable on an unknown proposal ID returns ProposalNotFound.
+    #[test]
+    fn test_time_until_executable_unknown_id_fails() {
+        let (_env, _admin, _cid, client) = setup();
+        assert_eq!(
+            client.try_time_until_executable(&999u64),
+            Err(Ok(Error::ProposalNotFound))
+        );
+    }
+
     // -----------------------------------------------------------------------
     // update_config / transfer_admin
     // -----------------------------------------------------------------------

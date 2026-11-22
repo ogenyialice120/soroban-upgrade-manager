@@ -1246,6 +1246,50 @@ mod tests {
         );
     }
 
+    /// After a proposal has been finalized as `Defeated`, `time_until_executable`
+    /// must return `0`.
+    ///
+    /// `ledgers_until_executable` returns `0` for any proposal whose status is
+    /// not `Queued`. A `Defeated` proposal has never been queued, so there is
+    /// no execution window to report.
+    ///
+    /// Uses the `test_finalize_defeated_without_quorum` pattern: cast fewer YES
+    /// votes than the quorum threshold, advance past the voting period, finalize
+    /// and assert `Defeated`, then assert `time_until_executable` returns `0`.
+    #[test]
+    fn test_time_until_executable_on_defeated() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "below quorum"),
+            &zero_hash(&env),
+        );
+
+        // Cast 2 YES votes — below quorum=3, so the proposal will be Defeated.
+        for _ in 0..2 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+
+        advance_past_voting(&env, &cid, id);
+        assert_eq!(
+            client.finalize(&id),
+            ProposalStatus::Defeated,
+            "proposal must finalize as Defeated"
+        );
+
+        // A Defeated proposal is not Queued, so time_until_executable must return 0.
+        assert_eq!(
+            client.time_until_executable(&id),
+            0u32,
+            "time_until_executable must return 0 for a Defeated proposal"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // update_config / transfer_admin
     // -----------------------------------------------------------------------

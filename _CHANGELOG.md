@@ -925,3 +925,19 @@ were modified.
 `cargo clippy --workspace --all-targets -- -D warnings` OK;
 `cargo test --workspace` → 102 passed, 0 failed
 (includes the new `test_storage_migrates_old_key_to_new_key_on_upgrade`).
+
+## 2026-12-01 — test/time-until-executable-on-defeated-67 (Issue #67)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_time_until_executable_on_defeated`.
+
+The test creates a proposal with the standard `setup()` configuration (quorum=3), casts 2 YES votes (below quorum), advances 101 ledgers past the voting period, calls `finalize()` and asserts the result is `Defeated`, then calls `time_until_executable` and asserts it returns `0u32`.
+
+**Why:** `ledgers_until_executable` in `timelock.rs` returns `0` for any proposal whose status is not `Queued`. A `Defeated` proposal never entered the queue, so there is no execution window. The existing `test_time_until_executable` test checks `0` for `Active` (pre-finalize) and the countdown for `Queued`, but does not cover `Defeated`. Without this test, a regression that set `executable_at` on a defeated proposal (and left `time_until_executable` returning a non-zero count) could go undetected.
+
+**BREAKING:** None. Test-only change.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
+
+Closes #67

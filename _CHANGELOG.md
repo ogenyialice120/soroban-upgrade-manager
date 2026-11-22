@@ -962,3 +962,25 @@ The test creates a proposal, casts three YES votes (meeting quorum=3 and thresho
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
 
 Closes #70
+
+## 2026-11-22 — design/proposal-receipt-122 (Issue #122)
+
+### Changes
+
+**DESIGN-proposal-receipt.md** (new file) — Design proposal for vote receipts.
+
+Covers:
+- **Storage change:** `record_vote` stores `approve` (the voter's actual `bool` choice) instead of the constant `true`. Storage cost per entry is unchanged — `bool` encodes as 1 byte in both cases.
+- **New view:** `get_vote(proposal_id, voter) -> Result<bool, Error>` reads back the stored bool, returning `Ok(true)` for YES, `Ok(false)` for NO, and `Err(VoteNotFound)` if the voter has not voted.
+- **Backwards compatibility:** Existing vote entries written as `true` will read as YES. Old NO votes cannot be distinguished from old YES votes once the contract is upgraded. The document explains why a version sentinel is not worth the added per-vote storage cost and recommends draining active proposals before deploying if a clean migration is required.
+- **Existing guarantee touched:** vote direction is not stored per-voter — this guarantee is removed by the change.
+- **Files that change:** `governance.rs`, `lib.rs`, optionally `types.rs` (new `VoteNotFound = 25` error).
+- **8 tests listed** covering YES/NO receipts, absent voter, multiple voters on the same proposal, multiple proposals per voter, aggregate count independence, delegated votes, and receipt readability after cancel.
+
+**Why:** Storing `true` as a vote sentinel records only that an address voted, not how. Downstream tools (explorers, audit scripts) cannot reconstruct vote direction from on-chain state alone. Storing `approve` turns each entry into a durable, verifiable receipt at zero additional storage cost.
+
+**BREAKING:** None — design document only. Code will be written after maintainer approval. When implemented, `record_vote` gains an `approve: bool` parameter (internal function only); `lib.rs` gains a new `get_vote` entry point; optionally `types::Error` gains `VoteNotFound = 25`.
+
+**Test results:** No code changes. `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 95 passed, 0 failed.
+
+Closes #122

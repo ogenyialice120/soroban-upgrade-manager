@@ -978,3 +978,32 @@ The test calls `setup()` to initialize the contract (voting_period=100, timelock
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 96 passed, 0 failed.
 
 Closes #66
+
+---
+
+## 2026-11-22 — design/emergency-pause-110 (Issue #110)
+
+### Changes
+
+**DESIGN-emergency-pause.md** — New design document for the emergency pause switch.
+
+### Changes detail
+
+Documents the full design for a global pause flag that blocks `execute()` with a single admin transaction:
+
+- **New `DataKey::Paused` variant** — `bool` in instance storage. Absent → `false` (not paused). Never added to `Config` (it is an emergency override, not a governance parameter).
+- **New errors:** `ContractPaused = 27`, `NotPaused = 28`, `AlreadyPaused = 29`.
+- **New functions:** `pause(caller)`, `unpause(caller)` (admin-only), `is_paused()` (read-only). Separate pause/unpause rather than a toggle to avoid concurrent-call ambiguity.
+- **Change to `execute()`:** A single guard at the top — before `load_proposal` — returns `ContractPaused` if the flag is set. Cheapest possible short-circuit.
+- **Only `execute()` is gated.** `propose_upgrade`, `vote`, `finalize`, and `cancel` are explicitly left unblocked, allowing governance to operate and prepare a remediation while paused.
+- **Events:** `("contract", "paused")` and `("contract", "unpaused")` with empty data.
+- **Security analysis:** Confirms the pause does not expand the admin trust model — the admin could already cancel all Queued proposals to achieve the same outcome; `pause` does it atomically in one transaction.
+- **Tests listed:** 12 tests covering the happy paths, negative paths, idempotency errors, and all unblocked functions.
+
+**Why:** When a security incident is discovered, the existing cancel-one-proposal-at-a-time approach is too slow and error-prone under time pressure. A single pause transaction stops all executions atomically, providing a reliable emergency brake. The design is minimal — a single boolean — consistent with the project's lean philosophy.
+
+**BREAKING:** None. Design document only; no contract code is written until a maintainer approves.
+
+**Test results:** N/A — design document only. No contract source or test changes.
+
+Closes #110

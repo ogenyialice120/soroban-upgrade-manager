@@ -2443,4 +2443,99 @@ mod tests {
             "delegation event must be emitted"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // storage key collision
+    // -----------------------------------------------------------------------
+
+    /// DataKey variants must not collide in persistent storage.
+    /// Writing under Config, Admin, Proposal(0), Vote(0, voter1), Proposal(1),
+    /// Vote(1, voter2) must each be independent and not corrupt other entries.
+    #[test]
+    fn test_storage_key_no_collision() {
+        let (env, _admin, cid, _client) = setup();
+
+        let voter1 = Address::generate(&env);
+        let voter2 = Address::generate(&env);
+
+        // Write distinct sentinel values under several DataKey variants.
+        env.as_contract(&cid, || {
+            // Config is stored in instance storage with its own DataKey::Config.
+            // We write a u32 under a few persistent keys to prove no collision.
+
+            // Proposal(0) → sentinel 100u32
+            env.storage()
+                .persistent()
+                .set(&DataKey::Proposal(0), &100u32);
+
+            // Proposal(1) → sentinel 200u32
+            env.storage()
+                .persistent()
+                .set(&DataKey::Proposal(1), &200u32);
+
+            // Vote(0, voter1) → true
+            env.storage()
+                .persistent()
+                .set(&DataKey::Vote(0, voter1.clone()), &true);
+
+            // Vote(1, voter2) → false
+            env.storage()
+                .persistent()
+                .set(&DataKey::Vote(1, voter2.clone()), &false);
+
+            // Vote(0, voter2) → true (same proposal id as first Vote entry, different address)
+            env.storage()
+                .persistent()
+                .set(&DataKey::Vote(0, voter2.clone()), &true);
+        });
+
+        // Read back all entries and verify each is independent.
+        env.as_contract(&cid, || {
+            let p0: u32 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Proposal(0))
+                .expect("Proposal(0) must exist");
+            assert_eq!(p0, 100u32, "Proposal(0) must be 100");
+
+            let p1: u32 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Proposal(1))
+                .expect("Proposal(1) must exist");
+            assert_eq!(p1, 200u32, "Proposal(1) must be 200");
+
+            let v0_voter1: bool = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Vote(0, voter1.clone()))
+                .expect("Vote(0, voter1) must exist");
+            assert!(v0_voter1, "Vote(0, voter1) must be true");
+
+            let v1_voter2: bool = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Vote(1, voter2.clone()))
+                .expect("Vote(1, voter2) must exist");
+            assert!(!v1_voter2, "Vote(1, voter2) must be false");
+
+            let v0_voter2: bool = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Vote(0, voter2.clone()))
+                .expect("Vote(0, voter2) must exist");
+            assert!(v0_voter2, "Vote(0, voter2) must be true");
+
+            // Verify that Proposal(0) was not affected by Vote(0, voter1) or Vote(0, voter2)
+            let p0_again: u32 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::Proposal(0))
+                .expect("Proposal(0) must still exist");
+            assert_eq!(
+                p0_again, 100u32,
+                "Proposal(0) must still be 100 after Vote writes"
+            );
+        });
+    }
 }

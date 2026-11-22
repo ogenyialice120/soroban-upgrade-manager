@@ -774,3 +774,19 @@ Covers:
 **BREAKING:** None. New documentation file only.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
+
+---
+
+## 2026-07-11 — test/storage-key-no-collision-76 (Issue #76)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_storage_key_no_collision`.
+
+The test uses `env.as_contract(&cid, ...)` to write sentinel values directly into persistent storage under `DataKey::Proposal(0)`, `DataKey::Proposal(1)`, `DataKey::Vote(0, voter1)`, `DataKey::Vote(1, voter2)`, and `DataKey::Vote(0, voter2)`, then reads them all back and asserts each value is independent. This confirms that the `DataKey` enum serializes each variant into a unique storage key so no variant can shadow another.
+
+**Why:** The `DataKey` enum has multiple variants including `Proposal(u64)` and `Vote(u64, Address)`. Without a collision test, an accidental change to the enum's discriminant encoding could cause two different keys to map to the same storage slot, silently corrupting state. The test makes this regression detectable.
+
+**BREAKING:** None. Test-only change.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 87 passed, 1 pre-existing failure (`test_triple_target_upgrade_v1_to_v2_to_v3_through_manager` — `wasm32v1-none` target not installed in this environment).

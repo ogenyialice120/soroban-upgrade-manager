@@ -963,72 +963,18 @@ The test creates a proposal, casts three YES votes (meeting quorum=3 and thresho
 
 Closes #70
 
-## 2026-12-01 — design/proposal-rate-limit-118 (Issue #118)
+## 2026-11-22 — test/get-proposal-empty-state-66 (Issue #66)
 
 ### Changes
 
-**DESIGN-proposal-rate-limit.md** (new file) — Design proposal for a configurable per-address proposal creation rate limit.
+**contracts/upgrade-manager/src/test.rs** — Added `test_get_proposal_empty_state`.
 
-Covers:
-- **Rate limit scope:** per-address (not global), so a spammer cannot block other proposers.
-- **Storage:** `DataKey::LastProposalLedger(Address) -> u32` in persistent storage, written only on a successful proposal creation.
-- **New config field:** `proposal_min_interval: u32` — minimum ledger gap between successive proposals from the same address. Zero disables the check (preserves current unlimited behavior).
-- **New error:** `ProposalRateLimitExceeded` (25).
-- **Logic placement:** check runs in `create_proposal` after auth, before the config snapshot; the last-ledger write happens after successful proposal save (so failed proposals don't burn the window).
-- **Rationale table:** per-address vs global comparison.
-- **Existing guarantee touched:** any address can create unlimited proposals; now rate-limited when `proposal_min_interval > 0`.
-- **10 tests listed** covering all boundary cases and independence between addresses.
+The test calls `setup()` to initialize the contract (voting_period=100, timelock_delay=17_280, quorum=3, threshold=51), then immediately calls `client.try_get_proposal(&0u64)` without creating any proposals. It asserts the result matches `Err(Ok(Error::ProposalNotFound))` using `matches!`, because `Proposal` does not implement `PartialEq` (which rules out `assert_eq!` on the full `Result`).
 
-**Why:** Unlimited proposal creation enables spam. A per-address cooldown with a configurable interval throttles spam without requiring a deposit and without affecting other proposers. Setting `proposal_min_interval = 0` preserves full backward compatibility for deployers who do not want a rate limit.
+**Why:** `load_proposal` in `governance.rs` returns `Error::ProposalNotFound` when `DataKey::Proposal(id)` is absent from persistent storage. On a fresh contract, no proposals exist, so ID 0 must be absent. No prior test exercised this specific code path — the existing `test_vote_on_unknown_proposal_fails` passes an arbitrary ID of 999, but only after the contract has been used. This new test isolates the empty-state edge case that the issue explicitly requires, following the `test_get_config_not_initialized_fails` pattern for read-only getters that should fail.
 
-**BREAKING:** None — design document only. Code will be written after maintainer approval. When implemented, `initialize` and `update_config` will gain a new required `proposal_min_interval` parameter.
+**BREAKING:** None. Test-only change; no contract source files were modified.
 
-**Test results:** No code changes. `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 96 passed, 0 failed.
 
-Closes #118
-
-## 2026-11-22 — feat/proposal-rate-limit-118 (Issue #118)
-
-### Changes
-
-**contracts/upgrade-manager/src/types.rs**
-- Added `LastProposalLedger(Address)` variant to `DataKey` — persistent storage key holding the ledger sequence of an address's most recent successful proposal.
-- Added `proposal_min_interval: u32` field to `Config` — minimum ledgers between successive proposals from the same address; `0` disables the check.
-- Added `ProposalRateLimitExceeded = 25` to the `Error` enum.
-
-**contracts/upgrade-manager/src/governance.rs**
-- `create_proposal`: inserted a per-address rate-limit check after input validation and before config snapshot. If `config.proposal_min_interval > 0` and the gap since the proposer's `LastProposalLedger` is less than the interval, returns `ProposalRateLimitExceeded`. The `LastProposalLedger` write happens **after** `save_proposal` so that proposals that fail validation do not consume the proposer's cooldown window.
-
-**contracts/upgrade-manager/src/lib.rs**
-- `initialize`: added `proposal_min_interval: u32` parameter (new 6th argument). Passed into `Config` struct.
-- `update_config`: added `proposal_min_interval: u32` parameter (new 6th argument). Passed into `Config` struct.
-- Both function doc comments updated to document the new parameter.
-
-**contracts/upgrade-manager/src/test.rs**
-- Updated all existing `initialize` and `update_config` call sites to pass `&0u32` as the new `proposal_min_interval` argument (33 sites). Using `0` preserves existing unlimited-proposal behavior in all pre-existing tests.
-- Added `setup_with_interval(interval)` helper alongside the existing `setup()` helper.
-- Added 10 new rate-limit tests:
-  - `test_rate_limit_allows_first_proposal` — first proposal always succeeds.
-  - `test_rate_limit_blocks_immediate_second_proposal` — second proposal at gap=0 returns `ProposalRateLimitExceeded`.
-  - `test_rate_limit_allows_after_interval_passes` — second proposal at gap=interval succeeds.
-  - `test_rate_limit_independent_per_address` — rate limit on address A does not block address B.
-  - `test_rate_limit_zero_disables_check` — `proposal_min_interval=0` allows unlimited proposals.
-  - `test_rate_limit_exact_boundary` — proposal at gap==interval succeeds.
-  - `test_rate_limit_one_before_boundary` — proposal at gap==interval-1 fails.
-  - `test_rate_limit_failed_proposal_does_not_set_window` — an `EmptyTitle` failure does not set `LastProposalLedger`.
-  - `test_rate_limit_update_config_changes_interval` — `update_config` changing `proposal_min_interval` takes effect immediately.
-  - `test_last_proposal_ledger_ttl_extended` — `LastProposalLedger` entry exists in persistent storage with the correct value after a proposal.
-
-**README.md**
-- Config reference table: added `proposal_min_interval` row.
-- Error codes table: added entries for codes 20–25 (codes 20–24 were missing from the table; 25 is the new `ProposalRateLimitExceeded`).
-- Security limitations: updated the "No proposal deposit" limitation to mention that the rate limit reduces single-address throughput but does not prevent sybil spam via fresh addresses.
-- Usage examples: updated `initialize` CLI command to include `--proposal_min_interval 720` (≈ 1 hour at ~5 s/ledger).
-
-**Why:** `create_proposal` had no throttle; a single address could spam proposals indefinitely. A per-address cooldown limits each address to one proposal per `proposal_min_interval` ledgers. A global limit would let one spammer block all other proposers; per-address limits cap the damage to the spammer's own addresses. Setting `proposal_min_interval = 0` (the default for existing deployments that call `update_config`) preserves current unlimited behavior.
-
-**BREAKING:** `initialize` and `update_config` each gain a new required `proposal_min_interval: u32` argument as the final parameter. Existing callers must add this argument. Passing `0` restores the previous behavior (no rate limit).
-
-**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 105 passed, 0 failed (95 pre-existing + 10 new rate-limit tests).
-
-Closes #118
+Closes #66

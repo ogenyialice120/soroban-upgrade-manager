@@ -856,3 +856,17 @@ correct role.
 `cargo clippy --workspace --all-targets -- -D warnings` OK;
 `cargo test --workspace` → 98 passed, 0 failed.
 
+
+## 2026-11-22 — design/multi-admin-role (Issue #121)
+
+### Changes
+
+**docs/design/multi-admin-role.md** — New design document for a configurable multi-admin role.
+
+**_CHANGELOG.md** — This entry.
+
+**Why:** The contract has a single admin, so a single compromised key can cancel proposals, change config, and transfer the admin role, even though the README recommends a multisig/DAO hold the role. The design evaluates two models. Option A (recommended default): off-chain Stellar account-level multisig on the single admin account — zero contract change, uses native multisig, sufficient when the admin is an EOA, and matches the hint that off-chain multisig is simpler and sufficient. Option B (opt-in): an in-contract M-of-N admin set with an approval-accumulator flow (propose_admin_action -> approve_admin_action -> execute_admin_action), for when the admin must be a contract/DAO or the policy must be enforced on-chain; because Soroban's native multi-sig is account-level (not per-contract-action), in-contract M-of-N needs a pending-action + approvals flow. Under Option B all current admin actions (cancel, update_config, admin-set mutation) move behind M-of-N; read-only getters stay open; admin-set mutations themselves require M-of-N with invariants (N >= 1, M <= N, no duplicates) so a minority cannot seize control. The single-admin on-chain guarantee is touched: unchanged under Option A, replaced by an M-of-N admin set (breaking initialize/transfer_admin signatures and DataKey::Admin storage) under Option B. A-now/B-later is viable because B is additive to the authorization model and does not fork the proposal lifecycle. No contract code is written until a maintainer approves this design.
+
+**BREAKING:** This PR (design document only) is non-breaking. Option B's proposed implementation is a breaking change to initialize/transfer_admin signatures and DataKey::Admin storage; Option A is non-breaking (no contract change).
+
+**Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.

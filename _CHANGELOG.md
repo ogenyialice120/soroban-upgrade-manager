@@ -962,3 +962,27 @@ The test creates a proposal, casts three YES votes (meeting quorum=3 and thresho
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
 
 Closes #70
+
+## 2026-12-01 — design/proposal-rate-limit-118 (Issue #118)
+
+### Changes
+
+**DESIGN-proposal-rate-limit.md** (new file) — Design proposal for a configurable per-address proposal creation rate limit.
+
+Covers:
+- **Rate limit scope:** per-address (not global), so a spammer cannot block other proposers.
+- **Storage:** `DataKey::LastProposalLedger(Address) -> u32` in persistent storage, written only on a successful proposal creation.
+- **New config field:** `proposal_min_interval: u32` — minimum ledger gap between successive proposals from the same address. Zero disables the check (preserves current unlimited behavior).
+- **New error:** `ProposalRateLimitExceeded` (25).
+- **Logic placement:** check runs in `create_proposal` after auth, before the config snapshot; the last-ledger write happens after successful proposal save (so failed proposals don't burn the window).
+- **Rationale table:** per-address vs global comparison.
+- **Existing guarantee touched:** any address can create unlimited proposals; now rate-limited when `proposal_min_interval > 0`.
+- **10 tests listed** covering all boundary cases and independence between addresses.
+
+**Why:** Unlimited proposal creation enables spam. A per-address cooldown with a configurable interval throttles spam without requiring a deposit and without affecting other proposers. Setting `proposal_min_interval = 0` preserves full backward compatibility for deployers who do not want a rate limit.
+
+**BREAKING:** None — design document only. Code will be written after maintainer approval. When implemented, `initialize` and `update_config` will gain a new required `proposal_min_interval` parameter.
+
+**Test results:** No code changes. `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
+
+Closes #118

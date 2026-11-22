@@ -1367,6 +1367,64 @@ mod tests {
         );
     }
 
+    /// Calling `update_config` with a different `timelock_delay` after a
+    /// proposal has been finalized into `Queued` must not alter the proposal's
+    /// already-set `executable_at`.
+    ///
+    /// `executable_at` is derived from the snapshotted `snap_timelock_delay`
+    /// at finalization time. The global `Config` is independent of any
+    /// in-flight proposal, so changing `timelock_delay` via `update_config`
+    /// can only affect proposals created after the config change.
+    #[test]
+    fn test_update_config_does_not_affect_queued_executable_at() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+
+        // Create a proposal and vote it through.
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+
+        // Advance past the voting period and finalize → Queued.
+        advance_past_voting(&env, &cid, id);
+        assert_eq!(client.finalize(&id), ProposalStatus::Queued);
+
+        // Record executable_at before changing config.
+        let proposal_before = client.get_proposal(&id);
+        assert_eq!(
+            proposal_before.status,
+            ProposalStatus::Queued,
+            "proposal must be Queued before config change"
+        );
+        let executable_at_before = proposal_before.executable_at;
+
+        // Change timelock_delay to a very different value.
+        client.update_config(&admin, &100u32, &1_000u32, &3u32, &51u32);
+
+        // The global config now has a different timelock_delay.
+        assert_eq!(client.get_config().timelock_delay, 1_000u32);
+
+        // The Queued proposal's executable_at must be unchanged.
+        let proposal_after = client.get_proposal(&id);
+        assert_eq!(
+            proposal_after.executable_at, executable_at_before,
+            "update_config must not alter executable_at of a Queued proposal"
+        );
+        assert_eq!(
+            proposal_after.status,
+            ProposalStatus::Queued,
+            "proposal status must remain Queued after config change"
+        );
+    }
+
     #[test]
     fn test_transfer_admin() {
         let (env, admin, _cid, client) = setup();
@@ -2762,6 +2820,79 @@ mod tests {
     // -----------------------------------------------------------------------
     // storage key collision
     // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // SHA256SUMS fixture verification (issue #72)
+    // -----------------------------------------------------------------------
+
+    /// Verifies that the committed fixture WASMs match the SHA-256 hashes
+    /// recorded in `tests/fixtures/SHA256SUMS`.
+    ///
+    /// Both the WASM bytes and the SHA256SUMS file are embedded at compile time
+    /// via `include_bytes!`. The test parses each `<hash>  <filename>` line and
+    /// compares the recorded hex string against the SHA-256 digest of the
+    /// corresponding WASM bytes.
+    #[test]
+    fn test_fixture_sha256sums_match() {
+        use sha2::{Digest, Sha256};
+
+        let v1_bytes = include_bytes!("../tests/fixtures/target_v1.wasm");
+        let v2_bytes = include_bytes!("../tests/fixtures/target_v2.wasm");
+        let sums_bytes = include_bytes!("../tests/fixtures/SHA256SUMS");
+
+        // Map filename to computed hex digest.
+        let computed: std::collections::HashMap<&str, std::string::String> = [
+            (
+                "target_v1.wasm",
+                fixture_hex_digest(Sha256::digest(v1_bytes)),
+            ),
+            (
+                "target_v2.wasm",
+                fixture_hex_digest(Sha256::digest(v2_bytes)),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        let sums_text = std::str::from_utf8(sums_bytes).expect("SHA256SUMS must be valid UTF-8");
+
+        let mut checked = 0usize;
+        for line in sums_text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // Format: "<hash>  <filename>"  (two spaces as sha256sum emits)
+            let mut parts = line.splitn(2, "  ");
+            let recorded_hash = parts
+                .next()
+                .expect("SHA256SUMS line must contain a hash")
+                .trim();
+            let filename = parts
+                .next()
+                .expect("SHA256SUMS line must contain a filename")
+                .trim();
+            let computed_hash = computed
+                .get(filename)
+                .unwrap_or_else(|| panic!("unexpected fixture filename in SHA256SUMS: {filename}"));
+            assert_eq!(
+                recorded_hash, computed_hash,
+                "SHA-256 mismatch for {filename}: recorded={recorded_hash} computed={computed_hash}"
+            );
+            checked += 1;
+        }
+
+        assert_eq!(checked, 2, "SHA256SUMS must contain exactly 2 entries");
+    }
+
+    /// Encode a SHA-256 digest as a lowercase hex string.
+    fn fixture_hex_digest(digest: impl AsRef<[u8]>) -> std::string::String {
+        digest
+            .as_ref()
+            .iter()
+            .map(|b| std::format!("{b:02x}"))
+            .collect()
+    }
 
     /// DataKey variants must not collide in persistent storage.
     /// Writing under Config, Admin, Proposal(0), Vote(0, voter1), Proposal(1),

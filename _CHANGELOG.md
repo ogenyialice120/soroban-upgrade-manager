@@ -813,3 +813,36 @@ every term back to the code where it is enforced.
 **BREAKING:** None. New documentation file only; no contract source changes.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
+
+---
+
+## 2026-11-22 — test/max-timelock-delay-overflow-60 (Issue #60)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added
+`test_max_timelock_delay_overflow_on_finalize`.
+
+- Initializes the manager with `timelock_delay = u32::MAX` and
+  `voting_period = 1` (quorum 1, threshold 51).
+- Creates a proposal, casts a single passing YES vote, extends TTLs, and
+  advances the ledger by 2 so the current ledger (2) is past
+  `voting_ends_at` (1).
+- Asserts `try_finalize` returns `Err(Ok(Error::Overflow))`: on a passed
+  vote, `finalize_voting` computes `executable_at = current_ledger +
+  snap_timelock_delay` via `checked_add`, and `2 + u32::MAX` overflows u32.
+- Asserts the proposal remains `Active`, confirming the failed finalize did
+  not partially mutate state.
+
+**Why:** `timelock_delay` is only rejected at 0 by `validate_config`;
+`u32::MAX` is accepted. The overflow guard in `finalize_voting`
+(`.ok_or(Error::Overflow)`, error code 15) had no test, so a regression
+that swapped the checked add for a wrapping add would silently queue
+proposals with a wrapped `executable_at` — executable far too early or
+never, breaking the timelock guarantee.
+
+**BREAKING:** None. Test-only change; no contract source files were modified.
+
+**Test results:** `cargo fmt --all -- --check` OK;
+`cargo clippy --workspace --all-targets -- -D warnings` OK;
+`cargo test --workspace` → 92 passed, 0 failed.

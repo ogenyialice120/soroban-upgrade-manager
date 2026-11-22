@@ -546,6 +546,27 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 **Why:** WASM builds are not byte-identical across machines because build paths are embedded, so the old rebuild-and-git-diff check failed on GitHub runners. CI now only checks that committed fixtures match their recorded checksums.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `sha256sum -c SHA256SUMS` → all OK. Other CI steps reviewed; no additional runner-breaking issues found.
+
+---
+
+## 2026-12-01 — test/fixture-sha256sums-verify-72 (Issue #72)
+
+### Changes
+
+**contracts/upgrade-manager/Cargo.toml** — Added `sha2 = "0.10.9"` as a dev-dependency.
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_fixture_sha256sums_match` and the `fixture_hex_digest` helper function.
+
+- `test_fixture_sha256sums_match` loads `target_v1.wasm`, `target_v2.wasm`, and `SHA256SUMS` via `include_bytes!` at compile time. It parses each `<hash>  <filename>` line from the sums file, computes `sha2::Sha256::digest` over the corresponding WASM bytes, and asserts the recorded hex string matches the computed digest. It also asserts exactly two entries are present.
+- `fixture_hex_digest` is a private helper that encodes a byte slice as a lowercase hex `std::string::String`, using the fully-qualified type to avoid shadowing by `soroban_sdk::String`.
+
+**Why:** CI already verifies checksums with `sha256sum -c SHA256SUMS`, but nothing inside the Rust test suite confirmed this invariant. If the fixture WASMs drift from their recorded hashes (e.g. accidental overwrite, re-build with a different toolchain), CI's sha256sum step catches it, but the Rust tests did not. The new test ensures that the same invariant is exercised during `cargo test --workspace` and surfaces fixture drift as a named, targeted test failure.
+
+**BREAKING:** None.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
+
+Closes #72
 ## 2026-10-30 — docs/testnet-verification
 
 ### Changes
@@ -926,18 +947,18 @@ were modified.
 `cargo test --workspace` → 102 passed, 0 failed
 (includes the new `test_storage_migrates_old_key_to_new_key_on_upgrade`).
 
-## 2026-12-01 — test/time-until-executable-on-defeated-67 (Issue #67)
+## 2026-12-01 — test/update-config-queued-executable-at-70 (Issue #70)
 
 ### Changes
 
-**contracts/upgrade-manager/src/test.rs** — Added `test_time_until_executable_on_defeated`.
+**contracts/upgrade-manager/src/test.rs** — Added `test_update_config_does_not_affect_queued_executable_at`.
 
-The test creates a proposal with the standard `setup()` configuration (quorum=3), casts 2 YES votes (below quorum), advances 101 ledgers past the voting period, calls `finalize()` and asserts the result is `Defeated`, then calls `time_until_executable` and asserts it returns `0u32`.
+The test creates a proposal, casts three YES votes (meeting quorum=3 and threshold=51), advances past the voting period, and calls `finalize()` to move the proposal to `Queued`. It records `executable_at` from `get_proposal`, then calls `update_config` with `timelock_delay=1_000` (the setup default is `17_280`). It then reads the proposal again and asserts `executable_at` is unchanged.
 
-**Why:** `ledgers_until_executable` in `timelock.rs` returns `0` for any proposal whose status is not `Queued`. A `Defeated` proposal never entered the queue, so there is no execution window. The existing `test_time_until_executable` test checks `0` for `Active` (pre-finalize) and the countdown for `Queued`, but does not cover `Defeated`. Without this test, a regression that set `executable_at` on a defeated proposal (and left `time_until_executable` returning a non-zero count) could go undetected.
+**Why:** `executable_at` is computed at `finalize_voting` time as `current_ledger + snap_timelock_delay`, where `snap_timelock_delay` is the timelock delay snapshotted at proposal creation. The global `Config` is entirely separate from proposal storage. No existing test verified that `update_config` cannot retroactively alter an already-queued proposal's execution window. If the contract were accidentally changed to look up the global config instead of the snapshot, `executable_at` would shift, allowing the execution window to be manipulated after votes are cast. The new test pins this invariant.
 
 **BREAKING:** None. Test-only change.
 
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
 
-Closes #67
+Closes #70

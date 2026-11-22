@@ -962,3 +962,26 @@ The test creates a proposal, casts three YES votes (meeting quorum=3 and thresho
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
 
 Closes #70
+
+## 2026-11-22 — design/timelock-acceleration-119 (Issue #119)
+
+### Changes
+
+**DESIGN-timelock-acceleration.md** (new file) — Design proposal for optional emergency timelock acceleration.
+
+Covers:
+- **Who can accelerate:** the admin plus a second `emergency_multisig` address stored in `Config`. Both must sign the `accelerate_timelock` transaction (two-of-two). When `emergency_multisig` is `None` (the default), the feature is entirely disabled.
+- **Minimum accelerated delay:** a new `minimum_emergency_delay: u32` config field. Acceleration cannot reduce `executable_at` below `current_ledger + minimum_emergency_delay`. The contract enforces `minimum_emergency_delay >= 1` when the feature is enabled.
+- **New entry point:** `accelerate_timelock(caller, proposal_id, new_executable_at)` — sets `proposal.executable_at = new_executable_at` after all checks pass, then emits a `(timelock, accel)` event that records the old and new values for transparency.
+- **New error variants:** `AccelerationDisabled` (25), `AccelerationTooAggressive` (26), `AccelerationNotEarlier` (27).
+- **Existing guarantee touched:** the timelock is fixed per proposal after finalization — this guarantee is partially relaxed: `executable_at` becomes mutable but only under explicit, auditable conditions.
+- **Backwards compatibility:** passing `emergency_multisig = None` and `minimum_emergency_delay = 0` disables the feature entirely, preserving current behavior. `initialize` and `update_config` will gain two new required parameters (BREAKING when implemented).
+- **10 tests listed** covering success, each failure mode, the emitted event, end-to-end acceleration + execute, and default disabled state.
+
+**Why:** A fixed timelock is a core security property, but in an emergency (actively exploited vulnerability), waiting for the full delay could expose the protocol to greater risk than a faster, auditable upgrade. Requiring two independent parties (admin + emergency multi-sig) to co-sign prevents a single compromised key from bypassing the review window. The minimum delay ensures the timelock is shortened, not eliminated.
+
+**BREAKING:** None — design document only. Code will be written after maintainer approval. When implemented, `initialize` and `update_config` will gain new required parameters.
+
+**Test results:** No code changes. `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 95 passed, 0 failed.
+
+Closes #119

@@ -813,3 +813,46 @@ every term back to the code where it is enforced.
 **BREAKING:** None. New documentation file only; no contract source changes.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
+
+---
+
+## 2026-11-22 — feat/admin-target-133 (Issue #133)
+
+### Changes
+
+**contracts/admin-target/** — New workspace member. An example target contract with
+its own admin role separate from the upgrade manager, demonstrating a realistic
+multi-role security model.
+
+- `__constructor(env, manager, admin)` — stores both roles as separate instance
+  storage keys (`symbol_short!("manager")`, `symbol_short!("admin")`) atomically
+  at deploy time.
+- `admin_action(env)` — requires `admin.require_auth()`; increments and returns
+  the admin-call counter. Example of an admin-only operational function.
+- `upgrade(env, new_wasm_hash)` — requires `manager.require_auth()` (NOT the
+  admin), then `env.deployer().update_current_contract_wasm`.
+- `get_manager()`, `get_admin()`, `get_admin_calls()`, `version()` — read-only
+  lookups. `version()` returns 2 when built with the `v2` feature flag.
+- Tests prove role separation both ways:
+  - `test_admin_action_with_manager_auth_fails` — the manager cannot run the
+    admin-only function.
+  - `test_upgrade_with_admin_auth_fails` — the admin cannot trigger an upgrade.
+  - Success paths verified with selective `env.mock_auths` (manager-mocked
+    upgrade to a real v2 WASM; admin-mocked `admin_action`).
+
+**Cargo.toml / Cargo.lock** — added `contracts/admin-target` to workspace members.
+
+**Why:** No existing example target had its own admin role distinct from the
+manager. A target that keeps day-to-day operations under a local admin while
+delegating upgrade authority to the manager demonstrates the intended
+multi-role pattern for consumers of the upgrade manager. Auth is mocked
+selectively (single address, exact contract + function + args) rather than
+`mock_all_auths`, so each `require_auth()` failure is attributable to the
+correct role.
+
+**BREAKING:** None. New contract only; no existing contracts were modified.
+
+**Test results:** `cargo fmt --all -- --check` OK;
+`cargo clippy --workspace --all-targets -- -D warnings` OK;
+`cargo test --workspace` → 98 passed, 0 failed.
+

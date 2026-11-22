@@ -777,18 +777,39 @@ Covers:
 
 ---
 
-## 2026-07-11 — test/proposal-id-overflow-77 (Issue #77)
+## 2026-07-11 — docs/glossary-79 (Issue #79)
 
 ### Changes
 
-**contracts/upgrade-manager/src/test.rs** — Added `test_proposal_id_overflow`.
+**docs/glossary.md** — New file. Governance glossary covering every term used
+in the upgrade manager.
 
-The test uses `env.as_contract(&cid, || { env.storage().instance().set(&DataKey::ProposalCount, &u64::MAX); })` to pre-set the proposal counter to `u64::MAX`, then calls `client.try_propose_upgrade(...)` and asserts `Err(Ok(Error::Overflow))`. Placed after `test_description_256_bytes_ok` and before `test_propose_not_initialized_fails` in the `propose_upgrade` section.
+Defined terms (grouped by theme):
 
-### Why
+- **Proposal lifecycle:** Proposal, Proposer, Voter, Voting Period, Timelock Delay,
+  Cross-Contract Invocation, WASM Hash, Upgrade.
+- **Governance parameters:** Quorum, Approval Threshold, Config Snapshot.
+- **Proposal statuses:** Active, Queued, Defeated, Executed, Cancelled.
+- **Storage concepts:** Instance Storage, Persistent Storage, TTL.
+- **Security patterns:** Checks-Effects-Interactions.
 
-`next_proposal_id` uses `checked_add(1)` and returns `Error::Overflow` when the counter wraps. The error handling branch is correct but was never exercised by any test: reaching `u64::MAX` proposals in normal operation is impossible in practice. Error handling should be tested even when the trigger condition is not reachable in normal operation — an untested branch is a silent regression risk if the overflow check is ever accidentally removed or changed.
+Each entry gives: a plain definition, the term's specific meaning in this
+project, and the exact file and symbol where it is defined or enforced (e.g.,
+`ProposalStatus::Queued` in `contracts/upgrade-manager/src/types.rs`,
+`finalize_voting()` in `contracts/upgrade-manager/src/governance.rs`).
 
-**BREAKING:** None. Test-only change.
+A "See Also" section links to the main reference files:
+`types.rs`, `governance.rs`, `lib.rs`, `timelock.rs`,
+`docs/checks-effects-interactions.md`, `docs/storage-layout.md`,
+`docs/wasm-compatibility.md`, and `docs/walkthrough.md`.
 
-**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 86 passed, 0 failed.
+**Why:** The codebase uses a consistent set of governance terms (quorum,
+approval threshold, config snapshot, timelock delay, checks-effects-interactions,
+etc.) but had no single reference defining them. New contributors and auditors
+had to piece together meaning from inline doc comments scattered across four
+source files. The glossary provides one definitive place that cross-references
+every term back to the code where it is enforced.
+
+**BREAKING:** None. New documentation file only; no contract source changes.
+
+**Test results:** `bash scripts/check_claims.sh` → OK.

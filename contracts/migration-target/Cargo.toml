@@ -1,0 +1,23 @@
+[package]
+name = "migration-target"
+version = "0.1.0"
+edition = "2021"
+rust-version.workspace = true
+description = "Target contract demonstrating storage migration (old_key -> new_key) performed inside upgrade() before the WASM swap."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0.11", features = ["testutils"] }
+
+[features]
+# Build with `--features v2` to get the new-format contract: `get_value()`
+# reads `new_key` (populated by the migration in `upgrade()`) and `version()`
+# returns 2.
+v2 = []
+testutils = ["soroban-sdk/testutils"]

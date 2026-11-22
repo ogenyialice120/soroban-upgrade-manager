@@ -21,6 +21,9 @@ pub enum DataKey {
     Delegation(Address),
     /// Delegation count: number of voters delegated to `delegate`: (delegate)
     DelegationCount(Address),
+    /// Ledger sequence of the most recent successful proposal from this address.
+    /// Used to enforce the per-address proposal rate limit.
+    LastProposalLedger(Address),
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +64,10 @@ pub struct Config {
     /// Votes are weighted equally (1 per address); this is the threshold of
     /// yes/(yes+no) * 100 that must be reached (e.g. 51 = simple majority).
     pub approval_threshold_pct: u32,
+    /// Minimum ledgers that must elapse between successive proposals from the
+    /// same address. Set to 0 to disable the rate limit (allow unlimited
+    /// proposals). At ~5 s/ledger, 720 ledgers ≈ 1 hour.
+    pub proposal_min_interval: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -185,4 +192,6 @@ pub enum Error {
     CannotDelegateToSelf = 23,
     /// Address has not delegated; nothing to revoke.
     NotDelegating = 24,
+    /// Proposer has submitted a proposal too recently; must wait proposal_min_interval ledgers.
+    ProposalRateLimitExceeded = 25,
 }

@@ -163,7 +163,7 @@ mod tests {
         let cid = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
-        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
         (env, admin, cid, client)
     }
 
@@ -242,7 +242,7 @@ mod tests {
     fn test_initialize_twice_fails() {
         let (_env, admin, _cid, client) = setup();
         assert_eq!(
-            client.try_initialize(&admin, &100u32, &100u32, &1u32, &51u32),
+            client.try_initialize(&admin, &100u32, &100u32, &1u32, &51u32, &0u32),
             Err(Ok(Error::AlreadyInitialized))
         );
     }
@@ -255,7 +255,7 @@ mod tests {
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
         assert_eq!(
-            client.try_initialize(&admin, &100u32, &0u32, &1u32, &51u32),
+            client.try_initialize(&admin, &100u32, &0u32, &1u32, &51u32, &0u32),
             Err(Ok(Error::InvalidTimelockDelay))
         );
     }
@@ -268,7 +268,7 @@ mod tests {
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
         assert_eq!(
-            client.try_initialize(&admin, &0u32, &100u32, &1u32, &51u32),
+            client.try_initialize(&admin, &0u32, &100u32, &1u32, &51u32, &0u32),
             Err(Ok(Error::InvalidVotingPeriod))
         );
     }
@@ -281,7 +281,7 @@ mod tests {
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
         assert_eq!(
-            client.try_initialize(&admin, &100u32, &100u32, &0u32, &51u32),
+            client.try_initialize(&admin, &100u32, &100u32, &0u32, &51u32, &0u32),
             Err(Ok(Error::InvalidQuorum))
         );
     }
@@ -294,7 +294,7 @@ mod tests {
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
         assert_eq!(
-            client.try_initialize(&admin, &100u32, &100u32, &1u32, &0u32),
+            client.try_initialize(&admin, &100u32, &100u32, &1u32, &0u32, &0u32),
             Err(Ok(Error::InvalidThreshold))
         );
     }
@@ -307,7 +307,7 @@ mod tests {
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
         assert_eq!(
-            client.try_initialize(&admin, &100u32, &100u32, &1u32, &101u32),
+            client.try_initialize(&admin, &100u32, &100u32, &1u32, &101u32, &0u32),
             Err(Ok(Error::InvalidThreshold))
         );
     }
@@ -359,7 +359,7 @@ mod tests {
         let cid = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
-        let result = client.try_initialize(&admin, &100u32, &100u32, &1u32, &51u32);
+        let result = client.try_initialize(&admin, &100u32, &100u32, &1u32, &51u32, &0u32);
         assert!(result.is_err(), "initialize without auth must fail");
     }
 
@@ -430,7 +430,7 @@ mod tests {
         let (env, _admin, _cid, client) = setup();
         let non_admin = Address::generate(&env);
         assert_eq!(
-            client.try_update_config(&non_admin, &50u32, &100u32, &1u32, &51u32),
+            client.try_update_config(&non_admin, &50u32, &100u32, &1u32, &51u32, &0u32),
             Err(Ok(Error::Unauthorized))
         );
     }
@@ -442,7 +442,7 @@ mod tests {
         let cid = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &cid);
         let caller = Address::generate(&env);
-        let result = client.try_update_config(&caller, &50u32, &100u32, &1u32, &51u32);
+        let result = client.try_update_config(&caller, &50u32, &100u32, &1u32, &51u32, &0u32);
         assert!(result.is_err(), "update_config without auth must fail");
     }
 
@@ -647,7 +647,7 @@ mod tests {
         assert_eq!(p.snap_voting_period, 100);
 
         // Change config — new values must not affect in-flight proposal.
-        client.update_config(&admin, &200u32, &5_000u32, &10u32, &75u32);
+        client.update_config(&admin, &200u32, &5_000u32, &10u32, &75u32, &0u32);
         assert_eq!(client.get_config().quorum, 10);
 
         let p2 = client.get_proposal(&id);
@@ -866,7 +866,7 @@ mod tests {
         let cid = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
-        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
         let target = Address::generate(&env);
         let id = client.propose_upgrade(
             &admin,
@@ -1078,7 +1078,7 @@ mod tests {
         let manager_id = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
-        client.initialize(&admin, &100u32, &100u32, &1u32, &51u32);
+        client.initialize(&admin, &100u32, &100u32, &1u32, &51u32, &0u32);
 
         let v2_hash = env
             .deployer()
@@ -1280,7 +1280,7 @@ mod tests {
         let manager = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
         // Short voting period and timelock so the ledger advance is small.
-        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32);
+        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32, &0u32);
 
         let v2_hash = env
             .deployer()
@@ -1348,7 +1348,7 @@ mod tests {
     #[test]
     fn test_update_config() {
         let (_env, admin, _cid, client) = setup();
-        client.update_config(&admin, &50u32, &1000u32, &5u32, &66u32);
+        client.update_config(&admin, &50u32, &1000u32, &5u32, &66u32, &0u32);
         let cfg = client.get_config();
         assert_eq!(cfg.voting_period, 50);
         assert_eq!(cfg.timelock_delay, 1000);
@@ -1360,23 +1360,23 @@ mod tests {
     fn test_update_config_invalid_values_fail() {
         let (_env, admin, _cid, client) = setup();
         assert_eq!(
-            client.try_update_config(&admin, &0u32, &1000u32, &5u32, &66u32),
+            client.try_update_config(&admin, &0u32, &1000u32, &5u32, &66u32, &0u32),
             Err(Ok(Error::InvalidVotingPeriod))
         );
         assert_eq!(
-            client.try_update_config(&admin, &50u32, &0u32, &5u32, &66u32),
+            client.try_update_config(&admin, &50u32, &0u32, &5u32, &66u32, &0u32),
             Err(Ok(Error::InvalidTimelockDelay))
         );
         assert_eq!(
-            client.try_update_config(&admin, &50u32, &1000u32, &0u32, &66u32),
+            client.try_update_config(&admin, &50u32, &1000u32, &0u32, &66u32, &0u32),
             Err(Ok(Error::InvalidQuorum))
         );
         assert_eq!(
-            client.try_update_config(&admin, &50u32, &1000u32, &5u32, &0u32),
+            client.try_update_config(&admin, &50u32, &1000u32, &5u32, &0u32, &0u32),
             Err(Ok(Error::InvalidThreshold))
         );
         assert_eq!(
-            client.try_update_config(&admin, &50u32, &1000u32, &5u32, &101u32),
+            client.try_update_config(&admin, &50u32, &1000u32, &5u32, &101u32, &0u32),
             Err(Ok(Error::InvalidThreshold))
         );
     }
@@ -1421,7 +1421,7 @@ mod tests {
         let executable_at_before = proposal_before.executable_at;
 
         // Change timelock_delay to a very different value.
-        client.update_config(&admin, &100u32, &1_000u32, &3u32, &51u32);
+        client.update_config(&admin, &100u32, &1_000u32, &3u32, &51u32, &0u32);
 
         // The global config now has a different timelock_delay.
         assert_eq!(client.get_config().timelock_delay, 1_000u32);
@@ -1522,7 +1522,7 @@ mod tests {
         let cid = env.register(UpgradeManager, ());
         let client = UpgradeManagerClient::new(&env, &cid);
         let admin = Address::generate(&env);
-        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
         // Events are per-call; check after the initialize call.
         assert!(
             !env.events().all().is_empty(),
@@ -1615,7 +1615,7 @@ mod tests {
     #[test]
     fn test_event_config_updated() {
         let (env, admin, _cid, client) = setup();
-        client.update_config(&admin, &50u32, &1000u32, &1u32, &51u32);
+        client.update_config(&admin, &50u32, &1000u32, &1u32, &51u32, &0u32);
         assert!(
             count_events(&env, symbol_short!("config"), symbol_short!("updated")) >= 1,
             "missing config_updated event"
@@ -1658,7 +1658,7 @@ mod tests {
             .deployer()
             .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
         let admin = Address::generate(&env);
-        manager.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        manager.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
 
         let pid = manager.propose_upgrade(
             &admin,
@@ -1800,7 +1800,7 @@ mod tests {
         let manager_id = env.register(UpgradeManager, ());
         let manager = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
-        manager.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        manager.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
 
         // Use empty bytes as the "v2" WASM — soroban-wasmi rejects the real
         // fixture WASMs due to LEB128 table-index encoding (see doccomment).
@@ -1925,7 +1925,7 @@ mod tests {
         let manager_id = env.register(UpgradeManager, ());
         let manager = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
-        manager.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        manager.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
 
         // Use empty bytes as upgrade hash (real fixture WASMs rejected by validator).
         let v2_hash = env
@@ -1998,7 +1998,7 @@ mod tests {
         let manager = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
         // Short timelock to reduce ledger advance.
-        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32);
+        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32, &0u32);
 
         let bad_target = env.register(NoUpgradeFn, ());
 
@@ -2074,7 +2074,7 @@ mod tests {
         let manager = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
         // Short voting period and timelock to minimize ledger advances.
-        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32);
+        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32, &0u32);
 
         let error_target = env.register(ErrorTarget, ());
 
@@ -2144,7 +2144,7 @@ mod tests {
         let manager_id = env.register(UpgradeManager, ());
         let manager = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
-        manager.initialize(&admin, &20u32, &20u32, &1u32, &51u32);
+        manager.initialize(&admin, &20u32, &20u32, &1u32, &51u32, &0u32);
 
         let v1_bytes = include_bytes!("../tests/fixtures/target_v1.wasm");
         let target_id = env.register(v1_bytes.as_slice(), (manager_id.clone(),));
@@ -2218,7 +2218,7 @@ mod tests {
         let manager_id = env.register(UpgradeManager, ());
         let manager = UpgradeManagerClient::new(&env, &manager_id);
         let admin = Address::generate(&env);
-        manager.initialize(&admin, &20u32, &20u32, &1u32, &51u32);
+        manager.initialize(&admin, &20u32, &20u32, &1u32, &51u32, &0u32);
 
         // Register the natively compiled v1 contract.
         let target_id = env.register(TripleTarget, (manager_id.clone(),));
@@ -2678,7 +2678,7 @@ mod tests {
         let starting_ledger = env.ledger().sequence();
 
         // Initialize with voting_period=100 (matches the setup() helper default).
-        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32);
+        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
 
         let target = Address::generate(&env);
         let id = client.propose_upgrade(
@@ -2717,7 +2717,7 @@ mod tests {
         let admin = Address::generate(&env);
 
         // Initialize with voting_period = u32::MAX; other params use safe small values.
-        client.initialize(&admin, &u32::MAX, &1u32, &1u32, &51u32);
+        client.initialize(&admin, &u32::MAX, &1u32, &1u32, &51u32, &0u32);
 
         let starting_ledger = env.ledger().sequence();
 
@@ -2775,7 +2775,7 @@ mod tests {
         let admin = Address::generate(&env);
 
         // Initialize with timelock_delay = u32::MAX and a short voting period.
-        client.initialize(&admin, &1u32, &u32::MAX, &1u32, &51u32);
+        client.initialize(&admin, &1u32, &u32::MAX, &1u32, &51u32, &0u32);
 
         let target = Address::generate(&env);
         let id = client.propose_upgrade(
@@ -2995,6 +2995,344 @@ mod tests {
             assert_eq!(
                 p0_again, 100u32,
                 "Proposal(0) must still be 100 after Vote writes"
+            );
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Proposal rate limit
+    // -----------------------------------------------------------------------
+
+    /// Helper: set up a contract with the given proposal_min_interval.
+    fn setup_with_interval(
+        interval: u32,
+    ) -> (Env, Address, Address, UpgradeManagerClient<'static>) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100u32, &17_280u32, &3u32, &51u32, &interval);
+        (env, admin, cid, client)
+    }
+
+    /// First proposal from an address always succeeds regardless of interval.
+    #[test]
+    fn test_rate_limit_allows_first_proposal() {
+        let (env, admin, _cid, client) = setup_with_interval(1000);
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "first"),
+            &desc(&env, "first proposal"),
+            &zero_hash(&env),
+        );
+        assert_eq!(id, 0u64);
+    }
+
+    /// Second proposal immediately after the first returns ProposalRateLimitExceeded.
+    #[test]
+    fn test_rate_limit_blocks_immediate_second_proposal() {
+        let (env, admin, _cid, client) = setup_with_interval(1000);
+        let target = Address::generate(&env);
+        client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "first"),
+            &desc(&env, "first proposal"),
+            &zero_hash(&env),
+        );
+        // No ledger advance — gap is 0, which is < 1000.
+        assert_eq!(
+            client.try_propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "second"),
+                &desc(&env, "second proposal"),
+                &zero_hash(&env),
+            ),
+            Err(Ok(Error::ProposalRateLimitExceeded))
+        );
+    }
+
+    /// Second proposal succeeds once proposal_min_interval ledgers have passed.
+    #[test]
+    fn test_rate_limit_allows_after_interval_passes() {
+        let interval: u32 = 50;
+        let (env, admin, cid, client) = setup_with_interval(interval);
+        let target = Address::generate(&env);
+        client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "first"),
+            &desc(&env, "first proposal"),
+            &zero_hash(&env),
+        );
+
+        // Advance exactly interval ledgers.
+        const BUMP: u32 = 100_000;
+        env.as_contract(&cid, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += interval);
+
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "second"),
+            &desc(&env, "second proposal"),
+            &zero_hash(&env),
+        );
+        assert_eq!(id, 1u64);
+    }
+
+    /// Rate-limiting address A does not block address B from proposing.
+    #[test]
+    fn test_rate_limit_independent_per_address() {
+        let (env, admin, _cid, client) = setup_with_interval(1000);
+        let target = Address::generate(&env);
+        // Address A creates a proposal.
+        client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "admin first"),
+            &desc(&env, "admin first"),
+            &zero_hash(&env),
+        );
+        // Address B (different from admin) can still propose immediately.
+        let other = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &other,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "other first"),
+            &desc(&env, "other first"),
+            &zero_hash(&env),
+        );
+        assert_eq!(id, 1u64);
+    }
+
+    /// proposal_min_interval = 0 disables the check: unlimited proposals allowed.
+    #[test]
+    fn test_rate_limit_zero_disables_check() {
+        let (env, admin, _cid, client) = setup_with_interval(0);
+        let target = Address::generate(&env);
+        for i in 0u64..5 {
+            let id = client.propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, &std::format!("proposal {i}")),
+                &desc(&env, &std::format!("desc {i}")),
+                &zero_hash(&env),
+            );
+            assert_eq!(id, i);
+        }
+    }
+
+    /// Proposal at exactly proposal_min_interval ledgers after the last one succeeds.
+    #[test]
+    fn test_rate_limit_exact_boundary() {
+        let interval: u32 = 100;
+        let (env, admin, cid, client) = setup_with_interval(interval);
+        let target = Address::generate(&env);
+        client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "first"),
+            &desc(&env, "first"),
+            &zero_hash(&env),
+        );
+
+        const BUMP: u32 = 100_000;
+        env.as_contract(&cid, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += interval); // gap == interval exactly
+
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "second"),
+            &desc(&env, "second"),
+            &zero_hash(&env),
+        );
+        assert_eq!(id, 1u64);
+    }
+
+    /// Proposal at interval - 1 ledgers after the last one is rejected.
+    #[test]
+    fn test_rate_limit_one_before_boundary() {
+        let interval: u32 = 100;
+        let (env, admin, cid, client) = setup_with_interval(interval);
+        let target = Address::generate(&env);
+        client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "first"),
+            &desc(&env, "first"),
+            &zero_hash(&env),
+        );
+
+        const BUMP: u32 = 100_000;
+        env.as_contract(&cid, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += interval - 1); // gap == interval - 1
+
+        assert_eq!(
+            client.try_propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "second"),
+                &desc(&env, "second"),
+                &zero_hash(&env),
+            ),
+            Err(Ok(Error::ProposalRateLimitExceeded))
+        );
+    }
+
+    /// A proposal that fails validation (EmptyTitle) must NOT set the rate-limit window.
+    #[test]
+    fn test_rate_limit_failed_proposal_does_not_set_window() {
+        let (env, admin, _cid, client) = setup_with_interval(1000);
+        let target = Address::generate(&env);
+
+        // Attempt a proposal with an empty title — must fail.
+        let empty_title = String::from_str(&env, "");
+        assert_eq!(
+            client.try_propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &empty_title,
+                &desc(&env, "valid description"),
+                &zero_hash(&env),
+            ),
+            Err(Ok(Error::EmptyTitle))
+        );
+
+        // The window must NOT have been set, so a valid proposal immediately after succeeds.
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "valid title"),
+            &desc(&env, "valid description"),
+            &zero_hash(&env),
+        );
+        assert_eq!(id, 0u64);
+    }
+
+    /// Updating proposal_min_interval via update_config takes effect immediately.
+    #[test]
+    fn test_rate_limit_update_config_changes_interval() {
+        let (env, admin, cid, client) = setup_with_interval(1000);
+        let target = Address::generate(&env);
+
+        client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "first"),
+            &desc(&env, "first"),
+            &zero_hash(&env),
+        );
+
+        // Tighten interval to 5000 — still blocked.
+        client.update_config(&admin, &100u32, &17_280u32, &3u32, &51u32, &5000u32);
+        assert_eq!(
+            client.try_propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "second-blocked"),
+                &desc(&env, "second-blocked"),
+                &zero_hash(&env),
+            ),
+            Err(Ok(Error::ProposalRateLimitExceeded))
+        );
+
+        // Relax interval to 0 — now unlimited.
+        client.update_config(&admin, &100u32, &17_280u32, &3u32, &51u32, &0u32);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "second-ok"),
+            &desc(&env, "second-ok"),
+            &zero_hash(&env),
+        );
+        assert_eq!(id, 1u64);
+
+        // Re-enable a small interval so a third proposal is blocked again.
+        client.update_config(&admin, &100u32, &17_280u32, &3u32, &51u32, &500u32);
+        assert_eq!(
+            client.try_propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "third-blocked"),
+                &desc(&env, "third-blocked"),
+                &zero_hash(&env),
+            ),
+            Err(Ok(Error::ProposalRateLimitExceeded))
+        );
+
+        // Advance 500 ledgers — now allowed.
+        const BUMP: u32 = 100_000;
+        env.as_contract(&cid, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 500);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "third-ok"),
+            &desc(&env, "third-ok"),
+            &zero_hash(&env),
+        );
+        assert_eq!(id, 2u64);
+    }
+
+    /// LastProposalLedger entry exists in persistent storage after a proposal
+    /// and its TTL is at least PERSISTENT_TTL_BUMP.
+    #[test]
+    fn test_last_proposal_ledger_ttl_extended() {
+        let (env, admin, cid, client) = setup_with_interval(500);
+        let target = Address::generate(&env);
+
+        client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "first"),
+            &desc(&env, "first"),
+            &zero_hash(&env),
+        );
+
+        // The key must exist in persistent storage with the creation ledger value (0).
+        env.as_contract(&cid, || {
+            let stored: Option<u32> = env
+                .storage()
+                .persistent()
+                .get(&DataKey::LastProposalLedger(admin.clone()));
+            assert_eq!(
+                stored,
+                Some(0u32),
+                "LastProposalLedger must be set to ledger 0"
             );
         });
     }

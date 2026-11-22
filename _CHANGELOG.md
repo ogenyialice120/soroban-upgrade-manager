@@ -813,3 +813,37 @@ every term back to the code where it is enforced.
 **BREAKING:** None. New documentation file only; no contract source changes.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
+
+---
+
+## 2026-11-22 — test/error-returning-target-56 (Issue #56)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added
+`test_execute_with_error_returning_target` and a new helper sub-module
+contract `error_target_contract`.
+
+- The helper contract `ErrorTarget` has an `upgrade(new_wasm_hash)` with the
+  correct signature that returns `Err(TargetError::UpgradeRejected)` instead
+  of panicking or being absent — a distinct cross-contract failure mode from
+  the existing `NoUpgradeFn` helper.
+- The test runs the full governance flow (propose → vote → advance →
+  finalize → advance past the timelock), then calls `execute`.
+- Asserts `try_execute` fails, and that the proposal remains `Queued`,
+  proving the premature `status = Executed` write is rolled back by
+  Soroban's transaction atomicity when the target returns an error.
+
+**Why:** `invoke_upgrade` uses `env.invoke_contract::<()>`, which propagates
+any error returned by the target, and `execute()` saves `Executed` before the
+call. Only the "target has no upgrade() at all" path
+(`test_failed_upgrade_leaves_proposal_queued`) was covered; the
+"target exists, upgrades exist, but the target itself rejects the upgrade"
+path had no test. This distinction matters for integrators whose targets run
+pre-upgrade compatibility checks that can fail.
+
+**BREAKING:** None. Test-only change; no contract source files were modified.
+
+**Test results:** `cargo fmt --all -- --check` OK;
+`cargo clippy --workspace --all-targets -- -D warnings` OK;
+`cargo test --workspace` → 92 passed, 0 failed.

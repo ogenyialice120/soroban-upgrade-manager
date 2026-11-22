@@ -981,32 +981,29 @@ Closes #66
 
 ---
 
-## 2026-11-22 — design/proposal-deposit-105 (Issue #105)
+## 2026-11-22 — design/veto-window-112 (Issue #112)
 
 ### Changes
 
-**DESIGN-proposal-deposit.md** — New design document for the optional proposal deposit mechanism.
+**DESIGN-veto-window.md** — New design document for the optional veto window feature.
 
 ### Changes detail
 
-Documents the full design for requiring proposers to lock a SEP-41 token deposit when creating a proposal:
+Documents the full design for making the admin's power to cancel a `Queued` proposal time-bounded when deployers opt in:
 
-- **New `Config` fields:** `deposit_token: Option<Address>` and `deposit_amount: i128`. Both default to disabled; existing deployments are unchanged.
-- **New `DataKey::Deposit(u64)` variant** — per-proposal deposit record in persistent storage. Written on `create_proposal`, removed when the deposit is returned or forfeited.
-- **New error:** `InvalidDepositAmount = 30` — returned when `deposit_token` is `Some` and `deposit_amount < 0`.
-- **Config validation:** `validate_config` rejects negative `deposit_amount` when a token is configured. `deposit_amount = 0` is explicitly allowed as a soft-disable.
-- **Deposit flow in `create_proposal`:** After all validations, calls `token::Client::transfer(proposer, contract, deposit_amount)`. If the proposer has insufficient balance, the token contract traps and the whole transaction reverts — no proposal is stored and no deposit is lost.
-- **Defeat path in `finalize_voting`:** Deposits are transferred to the admin on `Defeated`. Held unchanged on `Queued`.
-- **Return path in `execute()`:** Deposit returned to proposer after a successful upgrade.
-- **Return path in `cancel_proposal()`:** Deposit returned to proposer on admin cancellation regardless of `Active` or `Queued` status.
-- **Snapshot isolation:** `deposit_token`/`deposit_amount` are not snapshotted into proposals. The stored `DataKey::Deposit` amount is immutable after creation. Token-address-change edge case documented.
-- **Security analysis:** Covers malicious token contracts, admin drain attempts (and why they fail), bounded exposure with `proposal_min_interval`, and token-address-change edge case.
-- **Tests listed:** 11 tests covering all forfeiture/return paths, disabled states, negative-amount config rejection, insufficient balance, and in-flight isolation.
+- **New `Config` field:** `veto_enabled: bool`. Defaults to `false` (no behaviour change for existing deployments).
+- **New error:** `VetoWindowClosed = 26` — returned when the admin calls `cancel` on a `Queued` proposal after `executable_at` while `veto_enabled = true`.
+- **Change to `cancel_proposal`:** A single guard: if the proposal is `Queued`, `veto_enabled` is `true`, and `current_ledger >= executable_at`, return `VetoWindowClosed`. Active proposals remain cancellable at any time.
+- **No new status variant:** `Cancelled` is reused. Adding a `Vetoed` variant would be a breaking `#[contracttype]` schema change and require updates at every `match` site.
+- **No new `DataKey`:** `veto_enabled` is part of `Config` stored under `DataKey::Config`.
+- **Snapshot behaviour:** `veto_enabled` is not snapshotted into proposals — it is an admin permission flag, not a voting outcome, and live-config reads are appropriate.
+- **Boundary:** At exactly `executable_at`, the veto window is closed and `execute` becomes available simultaneously (no gap or overlap).
+- **Tests listed:** 8 tests covering enabled/disabled states, boundary conditions, Active-proposal interaction, execute after window closes, `update_config` toggling, and that `ProposalFinalized` takes precedence over `VetoWindowClosed`.
 
-**Why:** Creating proposals is currently free, making spam possible. The README explicitly lists "No proposal deposit" as a known limitation. An optional deposit backed by a SEP-41 token creates a real economic disincentive for spammers while remaining fully opt-in — deployments that do not set `deposit_token` are entirely unaffected.
+**Why:** The existing admin cancel power has no time bound on `Queued` proposals. A deployer who wants a stronger governance guarantee — that a proposal approved by quorum vote will execute unless the admin intervenes *during* the timelock — has no mechanism to enforce this. The `veto_enabled` flag makes the veto window explicit and optional, reducing admin power for those who want it, while preserving current behaviour for deployments that do not set the flag.
 
 **BREAKING:** None. Design document only; no contract code is written until a maintainer approves.
 
-**Test results:** N/A — design document only. No contract source or test changes.
+**Test results:** N/A — design document only. No contract source or test changes. `bash scripts/check_claims.sh` → OK.
 
-Closes #105
+Closes #112

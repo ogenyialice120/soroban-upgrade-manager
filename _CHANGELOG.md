@@ -816,34 +816,43 @@ every term back to the code where it is enforced.
 
 ---
 
-## 2026-11-22 — test/error-returning-target-56 (Issue #56)
+## 2026-11-22 — feat/admin-target-133 (Issue #133)
 
 ### Changes
 
-**contracts/upgrade-manager/src/test.rs** — Added
-`test_execute_with_error_returning_target` and a new helper sub-module
-contract `error_target_contract`.
+**contracts/admin-target/** — New workspace member. An example target contract with
+its own admin role separate from the upgrade manager, demonstrating a realistic
+multi-role security model.
 
-- The helper contract `ErrorTarget` has an `upgrade(new_wasm_hash)` with the
-  correct signature that returns `Err(TargetError::UpgradeRejected)` instead
-  of panicking or being absent — a distinct cross-contract failure mode from
-  the existing `NoUpgradeFn` helper.
-- The test runs the full governance flow (propose → vote → advance →
-  finalize → advance past the timelock), then calls `execute`.
-- Asserts `try_execute` fails, and that the proposal remains `Queued`,
-  proving the premature `status = Executed` write is rolled back by
-  Soroban's transaction atomicity when the target returns an error.
+- `__constructor(env, manager, admin)` — stores both roles as separate instance
+  storage keys (`symbol_short!("manager")`, `symbol_short!("admin")`) atomically
+  at deploy time.
+- `admin_action(env)` — requires `admin.require_auth()`; increments and returns
+  the admin-call counter. Example of an admin-only operational function.
+- `upgrade(env, new_wasm_hash)` — requires `manager.require_auth()` (NOT the
+  admin), then `env.deployer().update_current_contract_wasm`.
+- `get_manager()`, `get_admin()`, `get_admin_calls()`, `version()` — read-only
+  lookups. `version()` returns 2 when built with the `v2` feature flag.
+- Tests prove role separation both ways:
+  - `test_admin_action_with_manager_auth_fails` — the manager cannot run the
+    admin-only function.
+  - `test_upgrade_with_admin_auth_fails` — the admin cannot trigger an upgrade.
+  - Success paths verified with selective `env.mock_auths` (manager-mocked
+    upgrade to a real v2 WASM; admin-mocked `admin_action`).
 
-**Why:** `invoke_upgrade` uses `env.invoke_contract::<()>`, which propagates
-any error returned by the target, and `execute()` saves `Executed` before the
-call. Only the "target has no upgrade() at all" path
-(`test_failed_upgrade_leaves_proposal_queued`) was covered; the
-"target exists, upgrades exist, but the target itself rejects the upgrade"
-path had no test. This distinction matters for integrators whose targets run
-pre-upgrade compatibility checks that can fail.
+**Cargo.toml / Cargo.lock** — added `contracts/admin-target` to workspace members.
 
-**BREAKING:** None. Test-only change; no contract source files were modified.
+**Why:** No existing example target had its own admin role distinct from the
+manager. A target that keeps day-to-day operations under a local admin while
+delegating upgrade authority to the manager demonstrates the intended
+multi-role pattern for consumers of the upgrade manager. Auth is mocked
+selectively (single address, exact contract + function + args) rather than
+`mock_all_auths`, so each `require_auth()` failure is attributable to the
+correct role.
+
+**BREAKING:** None. New contract only; no existing contracts were modified.
 
 **Test results:** `cargo fmt --all -- --check` OK;
 `cargo clippy --workspace --all-targets -- -D warnings` OK;
-`cargo test --workspace` → 92 passed, 0 failed.
+`cargo test --workspace` → 98 passed, 0 failed.
+

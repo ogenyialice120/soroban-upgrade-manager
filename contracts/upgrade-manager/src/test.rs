@@ -2602,6 +2602,67 @@ mod tests {
         );
     }
 
+    /// `timelock_delay = u32::MAX` makes `finalize` return `Error::Overflow`.
+    ///
+    /// On a passed vote, `finalize_voting` computes
+    /// `executable_at = current_ledger + snap_timelock_delay` with
+    /// `checked_add`. With `timelock_delay = u32::MAX` and any
+    /// `current_ledger > 0`, the addition overflows u32 and `finalize`
+    /// must return `Error::Overflow` (error code 15) instead of queueing
+    /// the proposal with a wrapped `executable_at`.
+    ///
+    /// Uses `voting_period = 1` so a 2-ledger advance closes voting, and
+    /// 1 YES vote satisfies quorum 1 / threshold 51.
+    #[test]
+    fn test_max_timelock_delay_overflow_on_finalize() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+
+        // Initialize with timelock_delay = u32::MAX and a short voting period.
+        client.initialize(&admin, &1u32, &u32::MAX, &1u32, &51u32);
+
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "max timelock delay"),
+            &desc(&env, "tests u32::MAX timelock_delay overflow on finalize"),
+            &zero_hash(&env),
+        );
+
+        // Quorum is 1: a single YES vote passes the proposal.
+        client.vote(&Address::generate(&env), &id, &true);
+
+        // Extend TTLs before advancing, then close the 1-ledger voting window.
+        // After the advance the current ledger is 2, so 2 + u32::MAX overflows u32.
+        const BUMP: u32 = 30_000;
+        env.as_contract(&cid, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 2);
+
+        assert_eq!(
+            client.try_finalize(&id),
+            Err(Ok(Error::Overflow)),
+            "finalize with timelock_delay = u32::MAX and current_ledger > 0 must overflow"
+        );
+
+        // The failed finalize left the proposal Active (not Queued) because
+        // the whole transaction reverted.
+        assert_eq!(
+            client.get_proposal(&id).status,
+            ProposalStatus::Active,
+            "proposal must remain Active after the reverted finalize"
+        );
+    }
+
     /// Delegation event is emitted when delegating.
     #[test]
     fn test_delegation_event_emitted() {

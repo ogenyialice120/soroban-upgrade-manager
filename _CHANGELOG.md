@@ -774,3 +774,19 @@ Covers:
 **BREAKING:** None. New documentation file only.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
+
+---
+
+## 2026-07-11 — test/vote-on-cancelled-75 (Issue #75)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_vote_on_cancelled_returns_voting_closed`.
+
+The test creates a proposal, cancels it via `client.cancel(&admin, &id)`, asserts the status is `Cancelled`, then calls `client.try_vote(&voter, &id, &true)` and asserts the result is `Err(Ok(Error::VotingClosed))`.
+
+**Why:** No existing test verified that `vote()` returns `VotingClosed` when called on a `Cancelled` proposal. The error code is defined and the branch exists in `cast_vote`, but was untested.
+
+**BREAKING:** None. Test-only change.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 87 passed, 1 pre-existing failure (`test_triple_target_upgrade_v1_to_v2_to_v3_through_manager` — `wasm32v1-none` target not installed in this environment).

@@ -642,6 +642,30 @@ mod tests {
         );
     }
 
+    /// Voting on a Cancelled proposal returns VotingClosed.
+    #[test]
+    fn test_vote_on_cancelled_returns_voting_closed() {
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        // Cancel the proposal.
+        client.cancel(&admin, &id);
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Cancelled);
+        // Attempting to vote on a Cancelled proposal must return VotingClosed.
+        let voter = Address::generate(&env);
+        assert_eq!(
+            client.try_vote(&voter, &id, &true),
+            Err(Ok(Error::VotingClosed))
+        );
+    }
+
     /// Voting on the exact last ledger of voting period (voting_ends_at) must succeed.
     #[test]
     fn test_vote_at_voting_ends_at_succeeds() {

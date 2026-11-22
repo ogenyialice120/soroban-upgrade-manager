@@ -978,3 +978,35 @@ The test calls `setup()` to initialize the contract (voting_period=100, timelock
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 96 passed, 0 failed.
 
 Closes #66
+
+---
+
+## 2026-11-22 — design/proposal-deposit-105 (Issue #105)
+
+### Changes
+
+**DESIGN-proposal-deposit.md** — New design document for the optional proposal deposit mechanism.
+
+### Changes detail
+
+Documents the full design for requiring proposers to lock a SEP-41 token deposit when creating a proposal:
+
+- **New `Config` fields:** `deposit_token: Option<Address>` and `deposit_amount: i128`. Both default to disabled; existing deployments are unchanged.
+- **New `DataKey::Deposit(u64)` variant** — per-proposal deposit record in persistent storage. Written on `create_proposal`, removed when the deposit is returned or forfeited.
+- **New error:** `InvalidDepositAmount = 30` — returned when `deposit_token` is `Some` and `deposit_amount < 0`.
+- **Config validation:** `validate_config` rejects negative `deposit_amount` when a token is configured. `deposit_amount = 0` is explicitly allowed as a soft-disable.
+- **Deposit flow in `create_proposal`:** After all validations, calls `token::Client::transfer(proposer, contract, deposit_amount)`. If the proposer has insufficient balance, the token contract traps and the whole transaction reverts — no proposal is stored and no deposit is lost.
+- **Defeat path in `finalize_voting`:** Deposits are transferred to the admin on `Defeated`. Held unchanged on `Queued`.
+- **Return path in `execute()`:** Deposit returned to proposer after a successful upgrade.
+- **Return path in `cancel_proposal()`:** Deposit returned to proposer on admin cancellation regardless of `Active` or `Queued` status.
+- **Snapshot isolation:** `deposit_token`/`deposit_amount` are not snapshotted into proposals. The stored `DataKey::Deposit` amount is immutable after creation. Token-address-change edge case documented.
+- **Security analysis:** Covers malicious token contracts, admin drain attempts (and why they fail), bounded exposure with `proposal_min_interval`, and token-address-change edge case.
+- **Tests listed:** 11 tests covering all forfeiture/return paths, disabled states, negative-amount config rejection, insufficient balance, and in-flight isolation.
+
+**Why:** Creating proposals is currently free, making spam possible. The README explicitly lists "No proposal deposit" as a known limitation. An optional deposit backed by a SEP-41 token creates a real economic disincentive for spammers while remaining fully opt-in — deployments that do not set `deposit_token` are entirely unaffected.
+
+**BREAKING:** None. Design document only; no contract code is written until a maintainer approves.
+
+**Test results:** N/A — design document only. No contract source or test changes.
+
+Closes #105

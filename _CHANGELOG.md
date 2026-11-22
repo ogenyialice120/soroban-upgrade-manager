@@ -546,6 +546,27 @@ The old README claimed "Rust 1.74+" — this was unverified and inaccurate (the 
 **Why:** WASM builds are not byte-identical across machines because build paths are embedded, so the old rebuild-and-git-diff check failed on GitHub runners. CI now only checks that committed fixtures match their recorded checksums.
 
 **Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 68 passed, 0 failed. `sha256sum -c SHA256SUMS` → all OK. Other CI steps reviewed; no additional runner-breaking issues found.
+
+---
+
+## 2026-12-01 — test/fixture-sha256sums-verify-72 (Issue #72)
+
+### Changes
+
+**contracts/upgrade-manager/Cargo.toml** — Added `sha2 = "0.10.9"` as a dev-dependency.
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_fixture_sha256sums_match` and the `fixture_hex_digest` helper function.
+
+- `test_fixture_sha256sums_match` loads `target_v1.wasm`, `target_v2.wasm`, and `SHA256SUMS` via `include_bytes!` at compile time. It parses each `<hash>  <filename>` line from the sums file, computes `sha2::Sha256::digest` over the corresponding WASM bytes, and asserts the recorded hex string matches the computed digest. It also asserts exactly two entries are present.
+- `fixture_hex_digest` is a private helper that encodes a byte slice as a lowercase hex `std::string::String`, using the fully-qualified type to avoid shadowing by `soroban_sdk::String`.
+
+**Why:** CI already verifies checksums with `sha256sum -c SHA256SUMS`, but nothing inside the Rust test suite confirmed this invariant. If the fixture WASMs drift from their recorded hashes (e.g. accidental overwrite, re-build with a different toolchain), CI's sha256sum step catches it, but the Rust tests did not. The new test ensures that the same invariant is exercised during `cargo test --workspace` and surfaces fixture drift as a named, targeted test failure.
+
+**BREAKING:** None.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
+
+Closes #72
 ## 2026-10-30 — docs/testnet-verification
 
 ### Changes

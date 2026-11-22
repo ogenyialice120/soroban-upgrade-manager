@@ -1518,6 +1518,7 @@ name = "soroban-upgrade-manager"
 version = "0.1.0"
 dependencies = [
  "example-target",
+ "sha2",
  "soroban-sdk",
  "triple-target",
 ]

@@ -2682,6 +2682,79 @@ mod tests {
     // storage key collision
     // -----------------------------------------------------------------------
 
+    // -----------------------------------------------------------------------
+    // SHA256SUMS fixture verification (issue #72)
+    // -----------------------------------------------------------------------
+
+    /// Verifies that the committed fixture WASMs match the SHA-256 hashes
+    /// recorded in `tests/fixtures/SHA256SUMS`.
+    ///
+    /// Both the WASM bytes and the SHA256SUMS file are embedded at compile time
+    /// via `include_bytes!`. The test parses each `<hash>  <filename>` line and
+    /// compares the recorded hex string against the SHA-256 digest of the
+    /// corresponding WASM bytes.
+    #[test]
+    fn test_fixture_sha256sums_match() {
+        use sha2::{Digest, Sha256};
+
+        let v1_bytes = include_bytes!("../tests/fixtures/target_v1.wasm");
+        let v2_bytes = include_bytes!("../tests/fixtures/target_v2.wasm");
+        let sums_bytes = include_bytes!("../tests/fixtures/SHA256SUMS");
+
+        // Map filename to computed hex digest.
+        let computed: std::collections::HashMap<&str, std::string::String> = [
+            (
+                "target_v1.wasm",
+                fixture_hex_digest(Sha256::digest(v1_bytes)),
+            ),
+            (
+                "target_v2.wasm",
+                fixture_hex_digest(Sha256::digest(v2_bytes)),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        let sums_text = std::str::from_utf8(sums_bytes).expect("SHA256SUMS must be valid UTF-8");
+
+        let mut checked = 0usize;
+        for line in sums_text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // Format: "<hash>  <filename>"  (two spaces as sha256sum emits)
+            let mut parts = line.splitn(2, "  ");
+            let recorded_hash = parts
+                .next()
+                .expect("SHA256SUMS line must contain a hash")
+                .trim();
+            let filename = parts
+                .next()
+                .expect("SHA256SUMS line must contain a filename")
+                .trim();
+            let computed_hash = computed
+                .get(filename)
+                .unwrap_or_else(|| panic!("unexpected fixture filename in SHA256SUMS: {filename}"));
+            assert_eq!(
+                recorded_hash, computed_hash,
+                "SHA-256 mismatch for {filename}: recorded={recorded_hash} computed={computed_hash}"
+            );
+            checked += 1;
+        }
+
+        assert_eq!(checked, 2, "SHA256SUMS must contain exactly 2 entries");
+    }
+
+    /// Encode a SHA-256 digest as a lowercase hex string.
+    fn fixture_hex_digest(digest: impl AsRef<[u8]>) -> std::string::String {
+        digest
+            .as_ref()
+            .iter()
+            .map(|b| std::format!("{b:02x}"))
+            .collect()
+    }
+
     /// DataKey variants must not collide in persistent storage.
     /// Writing under Config, Admin, Proposal(0), Vote(0, voter1), Proposal(1),
     /// Vote(1, voter2) must each be independent and not corrupt other entries.

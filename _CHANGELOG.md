@@ -925,3 +925,19 @@ were modified.
 `cargo clippy --workspace --all-targets -- -D warnings` OK;
 `cargo test --workspace` → 102 passed, 0 failed
 (includes the new `test_storage_migrates_old_key_to_new_key_on_upgrade`).
+
+## 2026-12-01 — test/update-config-queued-executable-at-70 (Issue #70)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_update_config_does_not_affect_queued_executable_at`.
+
+The test creates a proposal, casts three YES votes (meeting quorum=3 and threshold=51), advances past the voting period, and calls `finalize()` to move the proposal to `Queued`. It records `executable_at` from `get_proposal`, then calls `update_config` with `timelock_delay=1_000` (the setup default is `17_280`). It then reads the proposal again and asserts `executable_at` is unchanged.
+
+**Why:** `executable_at` is computed at `finalize_voting` time as `current_ledger + snap_timelock_delay`, where `snap_timelock_delay` is the timelock delay snapshotted at proposal creation. The global `Config` is entirely separate from proposal storage. No existing test verified that `update_config` cannot retroactively alter an already-queued proposal's execution window. If the contract were accidentally changed to look up the global config instead of the snapshot, `executable_at` would shift, allowing the execution window to be manipulated after votes are cast. The new test pins this invariant.
+
+**BREAKING:** None. Test-only change.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
+
+Closes #70

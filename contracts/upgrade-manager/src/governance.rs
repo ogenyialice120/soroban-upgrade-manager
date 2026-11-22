@@ -316,6 +316,18 @@ pub fn create_proposal(
     let config = load_config(env)?;
     let current_ledger = env.ledger().sequence();
 
+    // Per-address rate limit: reject if the proposer submitted too recently.
+    // A proposal_min_interval of 0 disables the check entirely.
+    if config.proposal_min_interval > 0 {
+        let rate_key = DataKey::LastProposalLedger(proposer.clone());
+        if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&rate_key) {
+            let gap = current_ledger.saturating_sub(last);
+            if gap < config.proposal_min_interval {
+                return Err(Error::ProposalRateLimitExceeded);
+            }
+        }
+    }
+
     // Snapshot the rules at creation time.
     let voting_ends_at = current_ledger
         .checked_add(config.voting_period)
@@ -344,6 +356,16 @@ pub fn create_proposal(
     };
 
     save_proposal(env, &proposal);
+
+    // Record this ledger as the proposer's most recent successful proposal.
+    // This write is intentionally placed AFTER save_proposal so that failed
+    // validations above (EmptyTitle, rate limit, etc.) do not consume the
+    // proposer's rate-limit window.
+    let rate_key = DataKey::LastProposalLedger(proposer.clone());
+    env.storage().persistent().set(&rate_key, &current_ledger);
+    env.storage()
+        .persistent()
+        .extend_ttl(&rate_key, PERSISTENT_TTL_BUMP, PERSISTENT_TTL_BUMP);
 
     // Emit "proposal_created" event.
     env.events().publish(

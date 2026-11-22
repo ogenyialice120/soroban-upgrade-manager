@@ -986,3 +986,49 @@ Covers:
 **Test results:** No code changes. `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
 
 Closes #118
+
+## 2026-11-22 — feat/proposal-rate-limit-118 (Issue #118)
+
+### Changes
+
+**contracts/upgrade-manager/src/types.rs**
+- Added `LastProposalLedger(Address)` variant to `DataKey` — persistent storage key holding the ledger sequence of an address's most recent successful proposal.
+- Added `proposal_min_interval: u32` field to `Config` — minimum ledgers between successive proposals from the same address; `0` disables the check.
+- Added `ProposalRateLimitExceeded = 25` to the `Error` enum.
+
+**contracts/upgrade-manager/src/governance.rs**
+- `create_proposal`: inserted a per-address rate-limit check after input validation and before config snapshot. If `config.proposal_min_interval > 0` and the gap since the proposer's `LastProposalLedger` is less than the interval, returns `ProposalRateLimitExceeded`. The `LastProposalLedger` write happens **after** `save_proposal` so that proposals that fail validation do not consume the proposer's cooldown window.
+
+**contracts/upgrade-manager/src/lib.rs**
+- `initialize`: added `proposal_min_interval: u32` parameter (new 6th argument). Passed into `Config` struct.
+- `update_config`: added `proposal_min_interval: u32` parameter (new 6th argument). Passed into `Config` struct.
+- Both function doc comments updated to document the new parameter.
+
+**contracts/upgrade-manager/src/test.rs**
+- Updated all existing `initialize` and `update_config` call sites to pass `&0u32` as the new `proposal_min_interval` argument (33 sites). Using `0` preserves existing unlimited-proposal behavior in all pre-existing tests.
+- Added `setup_with_interval(interval)` helper alongside the existing `setup()` helper.
+- Added 10 new rate-limit tests:
+  - `test_rate_limit_allows_first_proposal` — first proposal always succeeds.
+  - `test_rate_limit_blocks_immediate_second_proposal` — second proposal at gap=0 returns `ProposalRateLimitExceeded`.
+  - `test_rate_limit_allows_after_interval_passes` — second proposal at gap=interval succeeds.
+  - `test_rate_limit_independent_per_address` — rate limit on address A does not block address B.
+  - `test_rate_limit_zero_disables_check` — `proposal_min_interval=0` allows unlimited proposals.
+  - `test_rate_limit_exact_boundary` — proposal at gap==interval succeeds.
+  - `test_rate_limit_one_before_boundary` — proposal at gap==interval-1 fails.
+  - `test_rate_limit_failed_proposal_does_not_set_window` — an `EmptyTitle` failure does not set `LastProposalLedger`.
+  - `test_rate_limit_update_config_changes_interval` — `update_config` changing `proposal_min_interval` takes effect immediately.
+  - `test_last_proposal_ledger_ttl_extended` — `LastProposalLedger` entry exists in persistent storage with the correct value after a proposal.
+
+**README.md**
+- Config reference table: added `proposal_min_interval` row.
+- Error codes table: added entries for codes 20–25 (codes 20–24 were missing from the table; 25 is the new `ProposalRateLimitExceeded`).
+- Security limitations: updated the "No proposal deposit" limitation to mention that the rate limit reduces single-address throughput but does not prevent sybil spam via fresh addresses.
+- Usage examples: updated `initialize` CLI command to include `--proposal_min_interval 720` (≈ 1 hour at ~5 s/ledger).
+
+**Why:** `create_proposal` had no throttle; a single address could spam proposals indefinitely. A per-address cooldown limits each address to one proposal per `proposal_min_interval` ledgers. A global limit would let one spammer block all other proposers; per-address limits cap the damage to the spammer's own addresses. Setting `proposal_min_interval = 0` (the default for existing deployments that call `update_config`) preserves current unlimited behavior.
+
+**BREAKING:** `initialize` and `update_config` each gain a new required `proposal_min_interval: u32` argument as the final parameter. Existing callers must add this argument. Passing `0` restores the previous behavior (no rate limit).
+
+**Test results:** `cargo fmt --all` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 105 passed, 0 failed (95 pre-existing + 10 new rate-limit tests).
+
+Closes #118

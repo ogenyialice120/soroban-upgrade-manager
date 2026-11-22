@@ -236,7 +236,7 @@ The v2 upload transaction hash was not recorded.
    ```
 7. Initialize and check:
    ```bash
-   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- initialize --admin alice --voting_period 20 --timelock_delay 20 --quorum 1 --approval_threshold_pct 51
+   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- initialize --admin alice --voting_period 20 --timelock_delay 20 --quorum 1 --approval_threshold_pct 51 --proposal_min_interval 0
    stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- get_config
    stellar contract invoke --id "$TARGET_ID" --source alice --network testnet -- version
    ```
@@ -285,12 +285,15 @@ stellar contract invoke \
   --voting_period 17280 \
   --timelock_delay 17280 \
   --quorum 3 \
-  --approval_threshold_pct 51
+  --approval_threshold_pct 51 \
+  --proposal_min_interval 720
 ```
 
 > Both `voting_period` and `timelock_delay` are in ledgers. At ~5 s/ledger,
 > 17 280 ≈ 24 hours. The voting period is when votes are accepted; the timelock
 > delay is the mandatory wait between finalization and execution.
+> `proposal_min_interval` limits how often a single address can create proposals
+> (720 ledgers ≈ 1 hour). Set to 0 to disable the rate limit.
 
 ### 2. Propose an upgrade
 
@@ -349,6 +352,7 @@ stellar contract invoke \
 | `timelock_delay` | `u32` | Ledgers between `finalize()` and earliest `execute()`. The timelock starts when `finalize()` is called, not when the proposal is created. Min: 1. |
 | `quorum` | `u32` | Minimum total votes (YES + NO) for a proposal to be considered. Min: 1. |
 | `approval_threshold_pct` | `u32` | Percentage of YES votes required (1–100). E.g. `51` = simple majority. |
+| `proposal_min_interval` | `u32` | Minimum ledgers between successive proposals from the same address. `0` disables the rate limit. At ~5 s/ledger, `720` ≈ 1 hour. |
 
 ---
 
@@ -404,9 +408,11 @@ Use at your own risk.
   even after it has passed the vote, during the timelock delay. This is a
   deliberate safety valve, but it means the admin can unilaterally block an
   approved upgrade.
-- **No proposal deposit:** Creating a proposal is free, so spam is possible.
-  An attacker can flood the contract with proposals to increase gas costs for
-  legitimate users.
+- **No proposal deposit:** Creating a proposal is free, so spam is possible even with the rate limit.
+  An attacker who creates many addresses can still flood the contract with proposals
+  (one per address per `proposal_min_interval` ledgers). The rate limit reduces the
+  throughput from a single address. Consider combining it with a proposal deposit for
+  stronger spam protection.
 - **Timelock starts at finalize:** The mandatory delay begins when someone calls
   `finalize()`, not when the proposal is created. If no one finalizes, the
   proposal stays Active indefinitely.
@@ -483,6 +489,12 @@ Every error returned by the contract is a `u32` from the `Error` enum in
 | 17 | `VotingStillActive` | `finalize` called when `ledger.sequence() <= voting_ends_at` | Wait until the voting period has ended |
 | 18 | `EmptyDescription` | `propose_upgrade` with an empty description | Provide a non-empty description (1–256 bytes) |
 | 19 | `InvalidVotingPeriod` | `initialize` or `update_config` with `voting_period` of 0 | Use a value ≥ 1 |
+| 20 | `EmptyTitle` | `propose_upgrade` with an empty title | Provide a non-empty title (1–128 bytes) |
+| 21 | `TitleTooLong` | `propose_upgrade` with a title longer than 128 bytes | Shorten the title to ≤ 128 bytes |
+| 22 | `HasDelegated` | `vote` called by an address that has delegated, or `delegate` called with a delegate who has already delegated | Revoke delegation before voting directly; do not use transitive delegation |
+| 23 | `CannotDelegateToSelf` | `delegate` called with `delegate_to == caller` | Delegate to a different address |
+| 24 | `NotDelegating` | `revoke_delegation` called by an address that has not delegated | Call `delegate` first before revoking |
+| 25 | `ProposalRateLimitExceeded` | `propose_upgrade` called before `proposal_min_interval` ledgers have elapsed since the proposer's last successful proposal | Wait until the interval has elapsed, or set `proposal_min_interval` to `0` to disable the rate limit |
 
 > **Note:** `ProposalDefeated` (code 8) is defined in the `Error` enum but is never
 > returned by any function. When a proposal fails finalization, `finalize()`

@@ -61,6 +61,7 @@ impl UpgradeManager {
     /// - `timelock_delay`         — Ledgers between finalization and earliest execution. Must be >= 1.
     /// - `quorum`                 — Minimum total votes (YES+NO) required for a proposal to pass. Must be >= 1.
     /// - `approval_threshold_pct` — Percentage of YES/(YES+NO) votes required (1–100).
+    /// - `proposal_min_interval`  — Minimum ledgers between successive proposals from the same address. 0 disables the rate limit.
     ///
     /// # Errors
     /// - `AlreadyInitialized`  — contract storage already contains a Config entry.
@@ -72,6 +73,7 @@ impl UpgradeManager {
         timelock_delay: u32,
         quorum: u32,
         approval_threshold_pct: u32,
+        proposal_min_interval: u32,
     ) -> Result<(), Error> {
         // Prevent front-running: the intended admin must sign.
         admin.require_auth();
@@ -85,6 +87,7 @@ impl UpgradeManager {
             timelock_delay,
             quorum,
             approval_threshold_pct,
+            proposal_min_interval,
         };
         validate_config(&config)?;
 
@@ -119,6 +122,7 @@ impl UpgradeManager {
         timelock_delay: u32,
         quorum: u32,
         approval_threshold_pct: u32,
+        proposal_min_interval: u32,
     ) -> Result<(), Error> {
         require_admin(&env, &caller)?;
 
@@ -127,6 +131,7 @@ impl UpgradeManager {
             timelock_delay,
             quorum,
             approval_threshold_pct,
+            proposal_min_interval,
         };
         validate_config(&config)?;
 

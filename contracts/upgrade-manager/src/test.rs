@@ -1246,6 +1246,87 @@ mod tests {
         );
     }
 
+    /// After a proposal has been fully executed, `time_until_executable` must
+    /// return `0`.
+    ///
+    /// `ledgers_until_executable` returns `0` for any proposal whose status is
+    /// not `Queued`. Once `execute()` sets the status to `Executed`, the
+    /// function must therefore return `0`.
+    ///
+    /// Uses the `FixtureTarget` pattern from
+    /// `test_governance_upgrade_executed_through_manager`: initialize the
+    /// manager with a short voting period and timelock, run the full flow
+    /// (propose → vote → finalize → execute), and assert the return value.
+    #[test]
+    fn test_time_until_executable_on_executed() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let manager_id = env.register(UpgradeManager, ());
+        let manager = UpgradeManagerClient::new(&env, &manager_id);
+        let admin = Address::generate(&env);
+        // Short voting period and timelock so the ledger advance is small.
+        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32);
+
+        let v2_hash = env
+            .deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
+        let target_id = env.register_at(
+            &Address::generate(&env),
+            super::fixture_target_contract::FixtureTarget,
+            (manager_id.clone(),),
+        );
+
+        let pid = manager.propose_upgrade(
+            &admin,
+            &target_id,
+            &v2_hash,
+            &title(&env, "v2 upgrade"),
+            &desc(&env, "full flow for time_until_executable"),
+            &zero_hash(&env),
+        );
+        manager.vote(&Address::generate(&env), &pid, &true);
+
+        const BUMP: u32 = 50_000;
+        env.as_contract(&manager_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(pid), BUMP, BUMP);
+        });
+        env.as_contract(&target_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+        assert_eq!(manager.finalize(&pid), ProposalStatus::Queued);
+
+        env.as_contract(&manager_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(pid), BUMP, BUMP);
+        });
+        env.as_contract(&target_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+
+        manager.execute(&pid);
+        assert_eq!(
+            manager.get_proposal(&pid).status,
+            ProposalStatus::Executed,
+            "proposal must be Executed"
+        );
+
+        // After execution the proposal is no longer Queued, so
+        // time_until_executable must return 0.
+        assert_eq!(
+            manager.time_until_executable(&pid),
+            0u32,
+            "time_until_executable must return 0 for an Executed proposal"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // update_config / transfer_admin
     // -----------------------------------------------------------------------

@@ -925,3 +925,19 @@ were modified.
 `cargo clippy --workspace --all-targets -- -D warnings` OK;
 `cargo test --workspace` → 102 passed, 0 failed
 (includes the new `test_storage_migrates_old_key_to_new_key_on_upgrade`).
+
+## 2026-12-01 — test/time-until-executable-on-executed-69 (Issue #69)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_time_until_executable_on_executed`.
+
+The test registers a `FixtureTarget` with the upgrade manager, runs the full governance flow (propose → vote → finalize → advance past timelock → execute), confirms the proposal status is `Executed`, and asserts `time_until_executable` returns `0u32`.
+
+**Why:** `ledgers_until_executable` in `timelock.rs` returns `0` whenever the proposal status is not `Queued`. After `execute()` sets the status to `Executed`, the function must therefore return `0`. The existing `test_time_until_executable` checks `0` for Active (pre-finalize) and the countdown for Queued, but does not exercise the Executed status. Without this test, a regression that left the status as `Queued` after execution (breaking the checks-effects-interactions invariant) could go unnoticed in `time_until_executable` behavior.
+
+**BREAKING:** None. Test-only change.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
+
+Closes #69

@@ -528,6 +528,32 @@ mod tests {
         assert_eq!(id, 0u64);
     }
 
+    /// Pre-setting ProposalCount to u64::MAX causes next_proposal_id to overflow.
+    #[test]
+    fn test_proposal_id_overflow() {
+        let (env, admin, cid, client) = setup();
+
+        // Set the proposal counter to u64::MAX so the next increment overflows.
+        env.as_contract(&cid, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::ProposalCount, &u64::MAX);
+        });
+
+        let target = Address::generate(&env);
+        assert_eq!(
+            client.try_propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "overflow"),
+                &desc(&env, "overflow test"),
+                &zero_hash(&env),
+            ),
+            Err(Ok(Error::Overflow))
+        );
+    }
+
     #[test]
     fn test_propose_not_initialized_fails() {
         let env = Env::default();

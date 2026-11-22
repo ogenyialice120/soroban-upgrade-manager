@@ -5,6 +5,7 @@ members = [
     "contracts/example-target",
     "contracts/counter-target",
     "contracts/bad-target",
+    "contracts/admin-target",
 ]
 
 [workspace.package]

@@ -95,6 +95,41 @@ mod no_upgrade_contract {
     }
 }
 
+/// A target contract whose upgrade() RETURNS AN ERROR instead of panicking
+/// or being absent. Exercises the error-propagation path of the
+/// cross-contract call in invoke_upgrade: the manager's
+/// `env.invoke_contract::<()>` fails with the target's error, which makes
+/// the whole execute() transaction revert.
+#[cfg(test)]
+mod error_target_contract {
+    use soroban_sdk::{contract, contracterror, contractimpl, BytesN, Env};
+
+    #[contracterror]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    #[repr(u32)]
+    pub enum TargetError {
+        /// Simulates a target-side rejection of the upgrade (e.g. a failed
+        /// compatibility self-check before swapping the WASM).
+        UpgradeRejected = 1,
+    }
+
+    #[contract]
+    pub struct ErrorTarget;
+
+    #[contractimpl]
+    impl ErrorTarget {
+        pub fn version(_env: Env) -> u32 {
+            1
+        }
+
+        /// Has the right signature but returns Err, never performing the
+        /// `update_current_contract_wasm` call.
+        pub fn upgrade(_env: Env, _new_wasm_hash: BytesN<32>) -> Result<(), TargetError> {
+            Err(TargetError::UpgradeRejected)
+        }
+    }
+}
+
 // -----------------------------------------------------------------------
 // Main test module
 // -----------------------------------------------------------------------
@@ -112,6 +147,7 @@ mod tests {
 
     use crate::types::{DataKey, Error, ProposalStatus, INSTANCE_TTL_BUMP, PERSISTENT_TTL_BUMP};
 
+    use super::error_target_contract::ErrorTarget;
     use super::fixture_target_contract::{FixtureTarget, FixtureTargetClient};
     use super::mock_target_contract::MockTarget;
     use super::no_upgrade_contract::NoUpgradeFn;
@@ -1200,6 +1236,16 @@ mod tests {
         assert_eq!(client.time_until_executable(&id), 0u32);
     }
 
+    /// time_until_executable on an unknown proposal ID returns ProposalNotFound.
+    #[test]
+    fn test_time_until_executable_unknown_id_fails() {
+        let (_env, _admin, _cid, client) = setup();
+        assert_eq!(
+            client.try_time_until_executable(&999u64),
+            Err(Ok(Error::ProposalNotFound))
+        );
+    }
+
     // -----------------------------------------------------------------------
     // update_config / transfer_admin
     // -----------------------------------------------------------------------
@@ -1853,6 +1899,83 @@ mod tests {
             manager.get_proposal(&id).status,
             ProposalStatus::Queued,
             "proposal must remain Queued after a failed target upgrade"
+        );
+    }
+
+    /// Execute against a target whose upgrade() RETURNS AN ERROR.
+    ///
+    /// Distinct from `test_failed_upgrade_leaves_proposal_queued` (target has
+    /// no upgrade function at all): here the function exists with the right
+    /// signature but returns `Err(UpgradeRejected)`. The manager's
+    /// `invoke_contract::<()>` call fails with that error, the whole
+    /// `execute()` transaction reverts (undoing the premature
+    /// `status = Executed` write), and the proposal remains Queued.
+    ///
+    /// A failure inside invoke_contract is a host-level error, NOT one of the
+    /// manager's Error variants, so `try_execute` returns `Err(Err(_))`.
+    #[test]
+    fn test_execute_with_error_returning_target() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let manager_id = env.register(UpgradeManager, ());
+        let manager = UpgradeManagerClient::new(&env, &manager_id);
+        let admin = Address::generate(&env);
+        // Short voting period and timelock to minimize ledger advances.
+        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32);
+
+        let error_target = env.register(ErrorTarget, ());
+
+        // Any 32-byte hash; the target rejects the upgrade before using it.
+        let new_wasm_hash = zero_hash(&env);
+
+        let id = manager.propose_upgrade(
+            &admin,
+            &error_target,
+            &new_wasm_hash,
+            &title(&env, "upgrade a rejecting target"),
+            &desc(&env, "target upgrade() returns Err(UpgradeRejected)"),
+            &zero_hash(&env),
+        );
+        // Quorum is 1: a single YES vote passes the proposal.
+        manager.vote(&Address::generate(&env), &id, &true);
+
+        const BUMP: u32 = 50_000;
+        let extend_ttls = || {
+            env.as_contract(&manager_id, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+            });
+            env.as_contract(&error_target, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+            });
+        };
+
+        // Close voting and queue the proposal.
+        extend_ttls();
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+        assert_eq!(manager.finalize(&id), ProposalStatus::Queued);
+
+        // Pass the timelock.
+        extend_ttls();
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+
+        // The target's upgrade() returns Err → execute fails.
+        // The target's upgrade() returns Err → the cross-contract call fails
+        // with a host-level error (not one of the manager's Error variants).
+        let result = manager.try_execute(&id);
+        assert!(
+            result.is_err(),
+            "execute against a target whose upgrade() returns an error must fail"
+        );
+
+        // Transaction reverted → the premature Executed write was undone and
+        // the proposal is still Queued.
+        assert_eq!(
+            manager.get_proposal(&id).status,
+            ProposalStatus::Queued,
+            "proposal must remain Queued after a target upgrade error"
         );
     }
     /// Real v1→v2 WASM upgrade through the manager using the committed fixture WASMs.

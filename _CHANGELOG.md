@@ -857,16 +857,71 @@ correct role.
 `cargo test --workspace` → 98 passed, 0 failed.
 
 
-## 2026-11-22 — design/config-update-events (Issue #124)
+## 2026-11-22 — feature/migration-target (Issue #131)
 
 ### Changes
 
-**docs/design/config-update-events.md** — New design document for including config values in the config_updated event.
+**contracts/migration-target/** — New workspace member. An example target
+contract that demonstrates **storage migration during an upgrade**: the value
+stored under the v1 key `old_key` is moved to the v2 key `new_key` inside
+`upgrade()`, before the WASM is replaced.
 
-**_CHANGELOG.md** — This entry.
+- `__constructor(env, manager)` — stores the manager address atomically at
+  deploy time (no front-running window).
+- v1 (default, no features):
+  - `set_value(env, value: u32)` — stores the value under `old_key`.
+  - `get_value(env) -> u32` — reads `old_key` (`0` if unset).
+  - `version()` — returns `1`.
+- v2 (`--features v2`):
+  - `get_value(env) -> u32` — reads `new_key` (`0` if unset); the value
+    arrives via the migration in `upgrade()`. v2 does not expose `set_value`.
+  - `version()` — returns `2`.
+- `upgrade(env, new_wasm_hash)` — shared by both versions:
+  1. loads the stored manager and calls `manager.require_auth()`;
+  2. migrates `old_key` -> `new_key` (copies the value, then removes
+     `old_key`; idempotent — a no-op when `old_key` is already absent);
+  3. calls `env.deployer().update_current_contract_wasm(new_wasm_hash)`.
 
-**Why:** The config_updated event currently publishes only the caller address as data, so config changes can't be audited from event logs without querying storage. The design changes the event data from (caller) to (caller, old_config, new_config), keeping the topics (config, updated) unchanged so existing topic-based filters keep working. Including the old config makes the diff computable from the event alone, since storage history isn't queryable on-chain. The implementation change to update_config is minimal: load_config before save_config to capture the pre-image, then pass old + new to emit_config_updated. update_config's on-chain signature is unchanged, so on-chain callers are unaffected; the breakage is limited to off-chain event-data consumers (indexors/dashboards) parsing the payload positionally, and is flagged as breaking for those consumers. The only existing test referencing the event (test_event_config_updated) needs updating to also assert the data payload; new round-trip, all-fields, and exclusivity tests are listed. No contract code is written until a maintainer approves this design.
+**Approach chosen (documented in the contract's module docs and the walkthrough
+storage-layout note):** the migration runs in the **old** contract's
+`upgrade()` before the WASM swap — the issue hint's primary recommendation.
+`update_current_contract_wasm` swaps the code in place and preserves storage,
+but the old code is what executes during `upgrade()`, so the old layout must
+be migrated before the new code takes over. The v2 code can then assume
+`new_key` is authoritative from its first call. (The alternative — lazy
+migration on the new code's first call — was rejected so the new code never
+has to understand the old layout.)
 
-**BREAKING:** This PR (design document only) is non-breaking. The proposed implementation is a breaking change for off-chain event-data consumers (config_updated data payload format changes from (caller) to (caller, old_config, new_config)); not breaking for on-chain callers.
+**contracts/migration-target/src/lib.rs (test)** —
+`test_storage_migrates_old_key_to_new_key_on_upgrade` deploys v1, stores `42`
+under `old_key`, upgrades to the real v2 WASM (built at runtime via
+`cargo build --features v2 --target wasm32v1-none --release`, same approach as
+`counter-target`/`admin-target`), then asserts the value is `42` under
+`new_key` after the upgrade (and that `version()` flips 1 -> 2). The test is
+gated to the v1 build (`#[cfg(all(test, not(feature = "v2")))]`) because it
+deploys v1 and calls the v1-only `set_value`; the v2 build therefore stays
+clippy-clean (`cargo clippy -p migration-target --all-targets --features v2`
+passes).
 
-**Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
+**Cargo.toml / Cargo.lock** — added `contracts/migration-target` to workspace
+members.
+
+**docs/walkthrough.md** — extended the "Storage layout note" with a pointer
+to `contracts/migration-target/` as the worked example for renaming/
+restructuring an existing key (migration in the old contract's `upgrade()`
+before the WASM swap).
+
+**Why:** No example target demonstrated storage migration during an upgrade.
+The existing targets prove storage is *preserved* (same key, same layout),
+but none show how to safely change a storage key across an upgrade — the risk
+the walkthrough's storage-layout note warns about. A target that reads the old
+format, writes the new format in `upgrade()`, then hands off to the new code
+fills that gap and documents the correct, hint-recommended approach.
+
+**BREAKING:** None. New contract only; no existing contracts or the manager
+were modified.
+
+**Test results:** `cargo fmt --all -- --check` OK;
+`cargo clippy --workspace --all-targets -- -D warnings` OK;
+`cargo test --workspace` → 102 passed, 0 failed
+(includes the new `test_storage_migrates_old_key_to_new_key_on_upgrade`).

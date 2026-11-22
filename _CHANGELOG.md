@@ -774,3 +774,21 @@ Covers:
 **BREAKING:** None. New documentation file only.
 
 **Test results:** `bash scripts/check_claims.sh` → OK.
+
+---
+
+## 2026-07-11 — test/proposal-id-overflow-77 (Issue #77)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_proposal_id_overflow`.
+
+The test uses `env.as_contract(&cid, || { env.storage().instance().set(&DataKey::ProposalCount, &u64::MAX); })` to pre-set the proposal counter to `u64::MAX`, then calls `client.try_propose_upgrade(...)` and asserts `Err(Ok(Error::Overflow))`. Placed after `test_description_256_bytes_ok` and before `test_propose_not_initialized_fails` in the `propose_upgrade` section.
+
+### Why
+
+`next_proposal_id` uses `checked_add(1)` and returns `Error::Overflow` when the counter wraps. The error handling branch is correct but was never exercised by any test: reaching `u64::MAX` proposals in normal operation is impossible in practice. Error handling should be tested even when the trigger condition is not reachable in normal operation — an untested branch is a silent regression risk if the overflow check is ever accidentally removed or changed.
+
+**BREAKING:** None. Test-only change.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 86 passed, 0 failed.

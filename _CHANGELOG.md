@@ -963,24 +963,18 @@ The test creates a proposal, casts three YES votes (meeting quorum=3 and thresho
 
 Closes #70
 
-## 2026-11-22 — design/proposal-receipt-122 (Issue #122)
+## 2026-11-22 — test/get-proposal-empty-state-66 (Issue #66)
 
 ### Changes
 
-**DESIGN-proposal-receipt.md** (new file) — Design proposal for vote receipts.
+**contracts/upgrade-manager/src/test.rs** — Added `test_get_proposal_empty_state`.
 
-Covers:
-- **Storage change:** `record_vote` stores `approve` (the voter's actual `bool` choice) instead of the constant `true`. Storage cost per entry is unchanged — `bool` encodes as 1 byte in both cases.
-- **New view:** `get_vote(proposal_id, voter) -> Result<bool, Error>` reads back the stored bool, returning `Ok(true)` for YES, `Ok(false)` for NO, and `Err(VoteNotFound)` if the voter has not voted.
-- **Backwards compatibility:** Existing vote entries written as `true` will read as YES. Old NO votes cannot be distinguished from old YES votes once the contract is upgraded. The document explains why a version sentinel is not worth the added per-vote storage cost and recommends draining active proposals before deploying if a clean migration is required.
-- **Existing guarantee touched:** vote direction is not stored per-voter — this guarantee is removed by the change.
-- **Files that change:** `governance.rs`, `lib.rs`, optionally `types.rs` (new `VoteNotFound = 25` error).
-- **8 tests listed** covering YES/NO receipts, absent voter, multiple voters on the same proposal, multiple proposals per voter, aggregate count independence, delegated votes, and receipt readability after cancel.
+The test calls `setup()` to initialize the contract (voting_period=100, timelock_delay=17_280, quorum=3, threshold=51), then immediately calls `client.try_get_proposal(&0u64)` without creating any proposals. It asserts the result matches `Err(Ok(Error::ProposalNotFound))` using `matches!`, because `Proposal` does not implement `PartialEq` (which rules out `assert_eq!` on the full `Result`).
 
-**Why:** Storing `true` as a vote sentinel records only that an address voted, not how. Downstream tools (explorers, audit scripts) cannot reconstruct vote direction from on-chain state alone. Storing `approve` turns each entry into a durable, verifiable receipt at zero additional storage cost.
+**Why:** `load_proposal` in `governance.rs` returns `Error::ProposalNotFound` when `DataKey::Proposal(id)` is absent from persistent storage. On a fresh contract, no proposals exist, so ID 0 must be absent. No prior test exercised this specific code path — the existing `test_vote_on_unknown_proposal_fails` passes an arbitrary ID of 999, but only after the contract has been used. This new test isolates the empty-state edge case that the issue explicitly requires, following the `test_get_config_not_initialized_fails` pattern for read-only getters that should fail.
 
-**BREAKING:** None — design document only. Code will be written after maintainer approval. When implemented, `record_vote` gains an `approve: bool` parameter (internal function only); `lib.rs` gains a new `get_vote` entry point; optionally `types::Error` gains `VoteNotFound = 25`.
+**BREAKING:** None. Test-only change; no contract source files were modified.
 
-**Test results:** No code changes. `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 95 passed, 0 failed.
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 96 passed, 0 failed.
 
-Closes #122
+Closes #66

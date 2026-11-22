@@ -857,16 +857,71 @@ correct role.
 `cargo test --workspace` → 98 passed, 0 failed.
 
 
-## 2026-11-22 — design/multi-admin-role (Issue #121)
+## 2026-11-22 — feature/migration-target (Issue #131)
 
 ### Changes
 
-**docs/design/multi-admin-role.md** — New design document for a configurable multi-admin role.
+**contracts/migration-target/** — New workspace member. An example target
+contract that demonstrates **storage migration during an upgrade**: the value
+stored under the v1 key `old_key` is moved to the v2 key `new_key` inside
+`upgrade()`, before the WASM is replaced.
 
-**_CHANGELOG.md** — This entry.
+- `__constructor(env, manager)` — stores the manager address atomically at
+  deploy time (no front-running window).
+- v1 (default, no features):
+  - `set_value(env, value: u32)` — stores the value under `old_key`.
+  - `get_value(env) -> u32` — reads `old_key` (`0` if unset).
+  - `version()` — returns `1`.
+- v2 (`--features v2`):
+  - `get_value(env) -> u32` — reads `new_key` (`0` if unset); the value
+    arrives via the migration in `upgrade()`. v2 does not expose `set_value`.
+  - `version()` — returns `2`.
+- `upgrade(env, new_wasm_hash)` — shared by both versions:
+  1. loads the stored manager and calls `manager.require_auth()`;
+  2. migrates `old_key` -> `new_key` (copies the value, then removes
+     `old_key`; idempotent — a no-op when `old_key` is already absent);
+  3. calls `env.deployer().update_current_contract_wasm(new_wasm_hash)`.
 
-**Why:** The contract has a single admin, so a single compromised key can cancel proposals, change config, and transfer the admin role, even though the README recommends a multisig/DAO hold the role. The design evaluates two models. Option A (recommended default): off-chain Stellar account-level multisig on the single admin account — zero contract change, uses native multisig, sufficient when the admin is an EOA, and matches the hint that off-chain multisig is simpler and sufficient. Option B (opt-in): an in-contract M-of-N admin set with an approval-accumulator flow (propose_admin_action -> approve_admin_action -> execute_admin_action), for when the admin must be a contract/DAO or the policy must be enforced on-chain; because Soroban's native multi-sig is account-level (not per-contract-action), in-contract M-of-N needs a pending-action + approvals flow. Under Option B all current admin actions (cancel, update_config, admin-set mutation) move behind M-of-N; read-only getters stay open; admin-set mutations themselves require M-of-N with invariants (N >= 1, M <= N, no duplicates) so a minority cannot seize control. The single-admin on-chain guarantee is touched: unchanged under Option A, replaced by an M-of-N admin set (breaking initialize/transfer_admin signatures and DataKey::Admin storage) under Option B. A-now/B-later is viable because B is additive to the authorization model and does not fork the proposal lifecycle. No contract code is written until a maintainer approves this design.
+**Approach chosen (documented in the contract's module docs and the walkthrough
+storage-layout note):** the migration runs in the **old** contract's
+`upgrade()` before the WASM swap — the issue hint's primary recommendation.
+`update_current_contract_wasm` swaps the code in place and preserves storage,
+but the old code is what executes during `upgrade()`, so the old layout must
+be migrated before the new code takes over. The v2 code can then assume
+`new_key` is authoritative from its first call. (The alternative — lazy
+migration on the new code's first call — was rejected so the new code never
+has to understand the old layout.)
 
-**BREAKING:** This PR (design document only) is non-breaking. Option B's proposed implementation is a breaking change to initialize/transfer_admin signatures and DataKey::Admin storage; Option A is non-breaking (no contract change).
+**contracts/migration-target/src/lib.rs (test)** —
+`test_storage_migrates_old_key_to_new_key_on_upgrade` deploys v1, stores `42`
+under `old_key`, upgrades to the real v2 WASM (built at runtime via
+`cargo build --features v2 --target wasm32v1-none --release`, same approach as
+`counter-target`/`admin-target`), then asserts the value is `42` under
+`new_key` after the upgrade (and that `version()` flips 1 -> 2). The test is
+gated to the v1 build (`#[cfg(all(test, not(feature = "v2")))]`) because it
+deploys v1 and calls the v1-only `set_value`; the v2 build therefore stays
+clippy-clean (`cargo clippy -p migration-target --all-targets --features v2`
+passes).
 
-**Test results:** N/A — design document only; no code changes. Tests listed in the design doc are to be implemented after approval.
+**Cargo.toml / Cargo.lock** — added `contracts/migration-target` to workspace
+members.
+
+**docs/walkthrough.md** — extended the "Storage layout note" with a pointer
+to `contracts/migration-target/` as the worked example for renaming/
+restructuring an existing key (migration in the old contract's `upgrade()`
+before the WASM swap).
+
+**Why:** No example target demonstrated storage migration during an upgrade.
+The existing targets prove storage is *preserved* (same key, same layout),
+but none show how to safely change a storage key across an upgrade — the risk
+the walkthrough's storage-layout note warns about. A target that reads the old
+format, writes the new format in `upgrade()`, then hands off to the new code
+fills that gap and documents the correct, hint-recommended approach.
+
+**BREAKING:** None. New contract only; no existing contracts or the manager
+were modified.
+
+**Test results:** `cargo fmt --all -- --check` OK;
+`cargo clippy --workspace --all-targets -- -D warnings` OK;
+`cargo test --workspace` → 102 passed, 0 failed
+(includes the new `test_storage_migrates_old_key_to_new_key_on_upgrade`).

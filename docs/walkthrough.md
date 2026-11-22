@@ -182,6 +182,12 @@ stellar contract invoke \
 > must be storage-layout-compatible with the existing contract's stored data. Adding
 > new storage keys is safe; removing or retyping existing keys will cause panics when
 > the contract reads old storage. Confirm any layout changes before proposing.
+>
+> If you must rename or restructure an existing key, perform the migration in the
+> **old** contract's `upgrade()` before the WASM swap (the old code is what runs
+> during `upgrade()`, and storage is preserved by the swap). See
+> `contracts/migration-target/` for a worked v1→v2 example that moves `old_key`
+> to `new_key` inside `upgrade()`.
 
 ---
 

@@ -978,3 +978,32 @@ The test calls `setup()` to initialize the contract (voting_period=100, timelock
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 96 passed, 0 failed.
 
 Closes #66
+
+---
+
+## 2026-11-22 — design/veto-window-112 (Issue #112)
+
+### Changes
+
+**DESIGN-veto-window.md** — New design document for the optional veto window feature.
+
+### Changes detail
+
+Documents the full design for making the admin's power to cancel a `Queued` proposal time-bounded when deployers opt in:
+
+- **New `Config` field:** `veto_enabled: bool`. Defaults to `false` (no behaviour change for existing deployments).
+- **New error:** `VetoWindowClosed = 26` — returned when the admin calls `cancel` on a `Queued` proposal after `executable_at` while `veto_enabled = true`.
+- **Change to `cancel_proposal`:** A single guard: if the proposal is `Queued`, `veto_enabled` is `true`, and `current_ledger >= executable_at`, return `VetoWindowClosed`. Active proposals remain cancellable at any time.
+- **No new status variant:** `Cancelled` is reused. Adding a `Vetoed` variant would be a breaking `#[contracttype]` schema change and require updates at every `match` site.
+- **No new `DataKey`:** `veto_enabled` is part of `Config` stored under `DataKey::Config`.
+- **Snapshot behaviour:** `veto_enabled` is not snapshotted into proposals — it is an admin permission flag, not a voting outcome, and live-config reads are appropriate.
+- **Boundary:** At exactly `executable_at`, the veto window is closed and `execute` becomes available simultaneously (no gap or overlap).
+- **Tests listed:** 8 tests covering enabled/disabled states, boundary conditions, Active-proposal interaction, execute after window closes, `update_config` toggling, and that `ProposalFinalized` takes precedence over `VetoWindowClosed`.
+
+**Why:** The existing admin cancel power has no time bound on `Queued` proposals. A deployer who wants a stronger governance guarantee — that a proposal approved by quorum vote will execute unless the admin intervenes *during* the timelock — has no mechanism to enforce this. The `veto_enabled` flag makes the veto window explicit and optional, reducing admin power for those who want it, while preserving current behaviour for deployments that do not set the flag.
+
+**BREAKING:** None. Design document only; no contract code is written until a maintainer approves.
+
+**Test results:** N/A — design document only. No contract source or test changes. `bash scripts/check_claims.sh` → OK.
+
+Closes #112

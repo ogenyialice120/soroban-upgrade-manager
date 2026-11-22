@@ -981,30 +981,29 @@ Closes #66
 
 ---
 
-## 2026-11-22 — design/list-proposals-by-status-106 (Issue #106)
+## 2026-11-22 — design/veto-window-112 (Issue #112)
 
 ### Changes
 
-**DESIGN-list-proposals-by-status.md** — New design document for the read-only list_proposals_by_status view.
+**DESIGN-veto-window.md** — New design document for the optional veto window feature.
 
 ### Changes detail
 
-Documents the full design for a filtered paginator over proposals:
+Documents the full design for making the admin's power to cancel a `Queued` proposal time-bounded when deployers opt in:
 
-- **Function signature:** `list_proposals_by_status(env, status: ProposalStatus, offset: u64, limit: u32) -> Result<Vec<Proposal>, Error>`
-- **Return type:** Full `Proposal` structs (not just IDs) to avoid forcing callers into N follow-up RPC calls per page.
-- **Offset semantics:** `offset` counts matching proposals to skip, not raw proposal IDs. Callers can page through filtered results by incrementing `offset` by `limit` each call.
-- **Gas cost:** O(total proposals) scan — no built-in index or prefix scan exists in Soroban. Acceptable at the contract's intended scale; documented explicitly with rationale.
-- **Secondary index not added:** Would require index maintenance on every state transition (`create_proposal`, `finalize_voting`, `cancel_proposal`, `execute`), adding write complexity and bug surface for limited benefit at expected scale.
-- **No new DataKey:** Pure read over existing `DataKey::Proposal(u64)` entries.
-- **No new errors:** Reuses `NotInitialized` and propagates `ProposalNotFound` from `load_proposal`.
-- **Implementation snippet included:** Full Rust loop logic with `skipped` counter, early-exit on `limit` reached, and `Config` existence guard.
-- **Tests listed:** 8 tests covering matching results, empty cases, offset pagination, limit capping, limit=0, not-initialized, no proposals, and all five status values.
+- **New `Config` field:** `veto_enabled: bool`. Defaults to `false` (no behaviour change for existing deployments).
+- **New error:** `VetoWindowClosed = 26` — returned when the admin calls `cancel` on a `Queued` proposal after `executable_at` while `veto_enabled = true`.
+- **Change to `cancel_proposal`:** A single guard: if the proposal is `Queued`, `veto_enabled` is `true`, and `current_ledger >= executable_at`, return `VetoWindowClosed`. Active proposals remain cancellable at any time.
+- **No new status variant:** `Cancelled` is reused. Adding a `Vetoed` variant would be a breaking `#[contracttype]` schema change and require updates at every `match` site.
+- **No new `DataKey`:** `veto_enabled` is part of `Config` stored under `DataKey::Config`.
+- **Snapshot behaviour:** `veto_enabled` is not snapshotted into proposals — it is an admin permission flag, not a voting outcome, and live-config reads are appropriate.
+- **Boundary:** At exactly `executable_at`, the veto window is closed and `execute` becomes available simultaneously (no gap or overlap).
+- **Tests listed:** 8 tests covering enabled/disabled states, boundary conditions, Active-proposal interaction, execute after window closes, `update_config` toggling, and that `ProposalFinalized` takes precedence over `VetoWindowClosed`.
 
-**Why:** Clients and dashboards have no way to query proposals by status without iterating all pages and filtering client-side. The new view makes filtered access a single RPC call, reducing client complexity for the most common dashboard query (show Active proposals, show Queued proposals).
+**Why:** The existing admin cancel power has no time bound on `Queued` proposals. A deployer who wants a stronger governance guarantee — that a proposal approved by quorum vote will execute unless the admin intervenes *during* the timelock — has no mechanism to enforce this. The `veto_enabled` flag makes the veto window explicit and optional, reducing admin power for those who want it, while preserving current behaviour for deployments that do not set the flag.
 
 **BREAKING:** None. Design document only; no contract code is written until a maintainer approves.
 
-**Test results:** N/A — design document only. No contract source or test changes.
+**Test results:** N/A — design document only. No contract source or test changes. `bash scripts/check_claims.sh` → OK.
 
-Closes #106
+Closes #112

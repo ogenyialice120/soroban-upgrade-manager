@@ -962,3 +962,19 @@ The test creates a proposal, casts three YES votes (meeting quorum=3 and thresho
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 93 passed, 0 failed.
 
 Closes #70
+
+## 2026-11-22 — test/get-proposal-empty-state-66 (Issue #66)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_get_proposal_empty_state`.
+
+The test calls `setup()` to initialize the contract (voting_period=100, timelock_delay=17_280, quorum=3, threshold=51), then immediately calls `client.try_get_proposal(&0u64)` without creating any proposals. It asserts the result matches `Err(Ok(Error::ProposalNotFound))` using `matches!`, because `Proposal` does not implement `PartialEq` (which rules out `assert_eq!` on the full `Result`).
+
+**Why:** `load_proposal` in `governance.rs` returns `Error::ProposalNotFound` when `DataKey::Proposal(id)` is absent from persistent storage. On a fresh contract, no proposals exist, so ID 0 must be absent. No prior test exercised this specific code path — the existing `test_vote_on_unknown_proposal_fails` passes an arbitrary ID of 999, but only after the contract has been used. This new test isolates the empty-state edge case that the issue explicitly requires, following the `test_get_config_not_initialized_fails` pattern for read-only getters that should fail.
+
+**BREAKING:** None. Test-only change; no contract source files were modified.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 96 passed, 0 failed.
+
+Closes #66

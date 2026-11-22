@@ -325,6 +325,20 @@ mod tests {
         );
     }
 
+    /// get_proposal(0) on a freshly initialized contract returns ProposalNotFound.
+    ///
+    /// No proposals have been created, so DataKey::Proposal(0) is absent from
+    /// storage. load_proposal returns Error::ProposalNotFound in that case.
+    #[test]
+    fn test_get_proposal_empty_state() {
+        let (_, _, _, client) = setup();
+        let result = client.try_get_proposal(&0u64);
+        assert!(
+            matches!(result, Err(Ok(Error::ProposalNotFound))),
+            "get_proposal(0) on empty state must return ProposalNotFound, got: {result:?}"
+        );
+    }
+
     /// get_admin before initialization returns an error (NotInitialized).
     #[test]
     fn test_get_admin_not_initialized_fails() {

@@ -1250,6 +1250,38 @@ mod tests {
         assert_eq!(client.time_until_executable(&id), 0u32);
     }
 
+    /// time_until_executable on a Cancelled proposal returns 0.
+    ///
+    /// `ledgers_until_executable` returns 0 for any proposal whose status is not
+    /// Queued. This test covers the Cancelled path: create an Active proposal,
+    /// cancel it, then assert `time_until_executable` returns 0.
+    #[test]
+    fn test_time_until_executable_on_cancelled() {
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        // Confirm the proposal is Active before cancelling.
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Active);
+
+        // Admin cancels the proposal.
+        client.cancel(&admin, &id);
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Cancelled);
+
+        // A Cancelled proposal is not Queued, so time_until_executable must return 0.
+        assert_eq!(
+            client.time_until_executable(&id),
+            0u32,
+            "time_until_executable must return 0 for a Cancelled proposal"
+        );
+    }
+
     /// time_until_executable on an unknown proposal ID returns ProposalNotFound.
     #[test]
     fn test_time_until_executable_unknown_id_fails() {

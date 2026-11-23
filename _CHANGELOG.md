@@ -1099,3 +1099,27 @@ approximate.
 `bash scripts/check_claims.sh` → OK. No Rust source files were changed.
 
 Closes #87
+
+---
+
+## 2025-01-27 — test/time-until-executable-on-cancelled-68 (Issue #68)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_time_until_executable_on_cancelled`.
+
+The test creates an Active proposal, cancels it via `client.cancel(&admin, &id)`,
+and asserts `client.time_until_executable(&id)` returns `0u32`. This completes
+the matrix of non-Queued statuses for the `time_until_executable` getter:
+Active (covered by `test_time_until_executable`), Executed
+(`test_time_until_executable_on_executed`), Defeated (covered by the same base
+test), and Cancelled (new).
+
+**Why:** `ledgers_until_executable` in `timelock.rs` returns `0` for any proposal
+whose status is not `Queued`. The Cancelled branch was the only non-Queued status
+without its own dedicated test, leaving a gap in the coverage matrix.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
+
+Closes #68

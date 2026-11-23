@@ -1903,13 +1903,44 @@ mod tests {
         assert_eq!(manager.get_proposal(&pid).status, ProposalStatus::Executed);
     }
 
+    /// A second call to example-target's __constructor fails.
+    ///
+    /// The Soroban host invokes `__constructor` once at deploy time and prevents
+    /// it from being called again. After `env.register(ExampleTarget, (manager,))`
+    /// the constructor has already run; a subsequent direct invocation via
+    /// `env.invoke_contract` must fail at the host level.
+    #[test]
+    fn test_example_target_second_constructor_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // Deploy example-target with a manager address (constructor runs here).
+        let manager_id = env.register(UpgradeManager, ());
+        let target_id = env.register(ExampleTarget, (manager_id.clone(),));
+        let target_client = ExampleTargetClient::new(&env, &target_id);
+
+        // Confirm the first deployment succeeded and stored the manager.
+        assert_eq!(target_client.get_manager(), manager_id);
+        assert_eq!(target_client.version(), 1u32);
+
+        // A second call to __constructor must fail: the host only allows it once.
+        // The ExampleTargetClient doesn't expose __constructor post-deployment,
+        // so we invoke it directly via env.try_invoke_contract and assert it fails.
+        let new_manager = Address::generate(&env);
+        let ctor_sym = Symbol::new(&env, "__constructor");
+        let result = env.try_invoke_contract::<soroban_sdk::Val, soroban_sdk::InvokeError>(
+            &target_id,
+            &ctor_sym,
+            soroban_sdk::vec![&env, new_manager.to_val()],
+        );
+        assert!(
+            result.is_err(),
+            "__constructor must fail when called a second time after deployment"
+        );
+    }
+
     /// Deploys the real `example-target` contract with a contract address as
     /// manager, WITHOUT `mock_all_auths()`.
-    ///
-    /// Before the fix, `__constructor` called `manager.require_auth()`, which
-    /// fails for real deployment because the manager is a contract and cannot
-    /// sign. This test proves that a contract address can now be stored as
-    /// manager at deploy time.
     #[test]
     fn test_real_example_target_deployed_with_contract_manager_without_mock_auths() {
         let env = Env::default();

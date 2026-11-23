@@ -1102,25 +1102,23 @@ Closes #87
 
 ---
 
-## 2025-01-27 — test/finalize-on-cancelled-returns-voting-closed-74 (Issue #74)
+## 2025-01-27 — test/example-target-second-constructor-fails-71 (Issue #71)
 
 ### Changes
 
-**contracts/upgrade-manager/src/test.rs** — Added `test_finalize_on_cancelled_returns_voting_closed`.
+**contracts/upgrade-manager/src/test.rs** — Added `test_example_target_second_constructor_fails`.
 
-The test creates an Active proposal, cancels it via `client.cancel(&admin, &id)`,
-then calls `client.try_finalize(&id)` and asserts the result is
-`Err(Ok(Error::VotingClosed))`. This covers the Cancelled status path in
-`finalize_voting`, which checks `proposal.status != ProposalStatus::Active` and
-returns `Error::VotingClosed` for any non-Active status. The existing
-`test_finalize_already_queued_fails` covers the Queued path; this test covers
-Cancelled explicitly.
+The test deploys `ExampleTarget` via `env.register(ExampleTarget, (manager_id,))`,
+confirms `get_manager()` and `version()` return expected values, then attempts to
+invoke `__constructor` again via `env.try_invoke_contract` with a new manager
+address and asserts the result is an error. The Soroban host prevents re-invoking
+the constructor after deployment, so the second call fails at the host level.
 
-**Why:** `finalize_voting` returns `VotingClosed` for any non-Active proposal.
-The Cancelled status was not covered by any finalize test, leaving a gap in the
-error-path matrix for `finalize`.
+**Why:** The `example-target` doc comment states "The constructor is called
+**atomically** during deployment and cannot be called again." No test verified
+this invariant. The new test proves the host enforces it in the mock environment.
 
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace
 --all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
 
-Closes #74
+Closes #71

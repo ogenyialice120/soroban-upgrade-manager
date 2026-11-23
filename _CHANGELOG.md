@@ -1068,3 +1068,36 @@ already corrected in earlier entries and do not recur.
 Rust source files were changed).
 
 Closes #103
+
+---
+
+## 2026-11-24 — docs/events-reference-84 (Issue #84)
+
+### Changes
+
+**docs/events-reference.md** — new file.
+
+Created a complete reference page for all eight events emitted by the upgrade
+manager contract. Each event entry documents the topic symbol tuple, the data
+field types, the function that emits it, and when it fires. The document was
+written directly from the `env.events().publish()` calls in
+`contracts/upgrade-manager/src/governance.rs` and the `emit_*` calls in
+`contracts/upgrade-manager/src/lib.rs`.
+
+Events documented: `initialized`, `config_updated`, `admin_transferred`,
+`proposal_created`, `vote_cast`, `finalized`, `executed`, `cancelled`.
+
+The quick-reference table at the bottom collects all eight events, their topic
+symbols, and their data types in a single place.
+
+### Why
+
+No reference page existed for the contract events. Users integrating with the
+contract via indexers or off-chain tooling had to read the Rust source to find
+topic symbols and data types.
+
+### Test results
+
+`bash scripts/check_claims.sh` → OK. No Rust source files were changed.
+
+Closes #84

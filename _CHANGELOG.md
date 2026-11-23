@@ -1071,41 +1071,31 @@ Closes #103
 
 ---
 
-## 2026-11-24 — docs/threat-model-88 (Issue #88)
+## 2026-11-24 — docs/ledger-time-87 (Issue #87)
 
 ### Changes
 
-**docs/threat-model.md** — new file.
+**docs/ledger-time.md** — new file.
 
-Formal threat model document with five adversaries: malicious proposer
-(spammer), sybil voter, compromised admin key, malicious target contract, and
-front-runner. For each adversary the document lists the attack surface, what
-the contract does to mitigate the threat (with the specific function and error
-variant), relevant tests in `test.rs`, and the residual risk. A summary table
-maps all five threats to their key functions and error codes. Sections conclude
-with cross-references to the README security section and "Possible Future Work".
-
-All cited functions (`propose_upgrade`, `create_proposal`, `cast_vote`,
-`require_admin`, `cancel_proposal`, `invoke_upgrade`, `execute`), error
-variants (`ProposalRateLimitExceeded`, `AlreadyVoted`, `Unauthorized`,
-`ProposalFinalized`), and tests (`test_double_vote_fails`, `test_vote_yes_no`,
-`test_cancel_by_admin`, `test_cancel_queued_proposal`,
-`test_cancel_by_non_admin_fails`, `test_auth_cancel_non_admin_fails`,
-`test_failed_upgrade_leaves_proposal_queued`,
-`test_execute_with_error_returning_target`,
-`test_real_example_target_upgrade_rejects_non_manager`,
-`test_double_execute_fails`, `test_cancel_queued_proposal`) exist in the
-source and test files.
+Explains that Stellar ledgers close approximately every 5 seconds but that
+this is not guaranteed (the Stellar protocol targets 5–7 seconds). Provides a
+conversion table: 1 ledger ≈ 5 s, 720 ≈ 1 h, 17 280 ≈ 24 h, 120 960 ≈ 7 d.
+Explains that `voting_ends_at` and `executable_at` are ledger sequence numbers,
+not Unix timestamps, and that all timing in this contract is therefore
+approximate. Notes the TTL constants in `types.rs` as further examples of the
+same approximation. Includes practical guidance on choosing values with a
+safety buffer.
 
 ### Why
 
-No formal threat model existed. The README's "Security Model & Limitations"
-section listed known limitations without organizing them by adversary, attack
-surface, and residual risk. This document provides a structured view that
-maps each threat to code paths and tests.
+The README and walkthrough both mention the 5 s/ledger figure without
+explaining what it means in practice or that ledger timing is variable. Users
+setting `voting_period` and `timelock_delay` needed a single page to
+understand what these values mean in wall-clock terms and why the mapping is
+approximate.
 
 ### Test results
 
 `bash scripts/check_claims.sh` → OK. No Rust source files were changed.
 
-Closes #88
+Closes #87

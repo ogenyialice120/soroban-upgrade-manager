@@ -1099,3 +1099,26 @@ approximate.
 `bash scripts/check_claims.sh` → OK. No Rust source files were changed.
 
 Closes #87
+
+---
+
+## 2025-01-27 — test/example-target-second-constructor-fails-71 (Issue #71)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_example_target_second_constructor_fails`.
+
+The test deploys `ExampleTarget` via `env.register(ExampleTarget, (manager_id,))`,
+confirms `get_manager()` and `version()` return expected values, then attempts to
+invoke `__constructor` again via `env.try_invoke_contract` with a new manager
+address and asserts the result is an error. The Soroban host prevents re-invoking
+the constructor after deployment, so the second call fails at the host level.
+
+**Why:** The `example-target` doc comment states "The constructor is called
+**atomically** during deployment and cannot be called again." No test verified
+this invariant. The new test proves the host enforces it in the mock environment.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
+
+Closes #71

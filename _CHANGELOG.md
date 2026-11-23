@@ -1,3 +1,14 @@
+## 2026-11-23 â€” docs/spellcheck-ci-151
+
+### Changes
+- Add documentation spelling workflow and project terminology dictionary.
+
+**Why:** Catch Markdown typos in pull requests.
+
+**BREAKING:** None.
+
+**Tests:** Local structural assertions; GitHub Actions result pending. Rust tests not run (no Rust code changed).
+
 # CHANGELOG
 
 This file is the single source of truth for all changes made to this repository

@@ -1071,33 +1071,31 @@ Closes #103
 
 ---
 
-## 2026-11-24 — docs/events-reference-84 (Issue #84)
+## 2026-11-24 — docs/ledger-time-87 (Issue #87)
 
 ### Changes
 
-**docs/events-reference.md** — new file.
+**docs/ledger-time.md** — new file.
 
-Created a complete reference page for all eight events emitted by the upgrade
-manager contract. Each event entry documents the topic symbol tuple, the data
-field types, the function that emits it, and when it fires. The document was
-written directly from the `env.events().publish()` calls in
-`contracts/upgrade-manager/src/governance.rs` and the `emit_*` calls in
-`contracts/upgrade-manager/src/lib.rs`.
-
-Events documented: `initialized`, `config_updated`, `admin_transferred`,
-`proposal_created`, `vote_cast`, `finalized`, `executed`, `cancelled`.
-
-The quick-reference table at the bottom collects all eight events, their topic
-symbols, and their data types in a single place.
+Explains that Stellar ledgers close approximately every 5 seconds but that
+this is not guaranteed (the Stellar protocol targets 5–7 seconds). Provides a
+conversion table: 1 ledger ≈ 5 s, 720 ≈ 1 h, 17 280 ≈ 24 h, 120 960 ≈ 7 d.
+Explains that `voting_ends_at` and `executable_at` are ledger sequence numbers,
+not Unix timestamps, and that all timing in this contract is therefore
+approximate. Notes the TTL constants in `types.rs` as further examples of the
+same approximation. Includes practical guidance on choosing values with a
+safety buffer.
 
 ### Why
 
-No reference page existed for the contract events. Users integrating with the
-contract via indexers or off-chain tooling had to read the Rust source to find
-topic symbols and data types.
+The README and walkthrough both mention the 5 s/ledger figure without
+explaining what it means in practice or that ledger timing is variable. Users
+setting `voting_period` and `timelock_delay` needed a single page to
+understand what these values mean in wall-clock terms and why the mapping is
+approximate.
 
 ### Test results
 
 `bash scripts/check_claims.sh` → OK. No Rust source files were changed.
 
-Closes #84
+Closes #87

@@ -1007,3 +1007,60 @@ Documents the full design for making the admin's power to cancel a `Queued` prop
 **Test results:** N/A — design document only. No contract source or test changes. `bash scripts/check_claims.sh` → OK.
 
 Closes #112
+
+---
+
+## 2026-11-23 — docs/per-function-api-reference-92 (Issue #92)
+
+### Changes
+
+**docs/api-reference.md** (new file) — A single-page, per-function API reference
+covering all 15 public functions in the `UpgradeManager` contract:
+
+`initialize`, `update_config`, `transfer_admin`, `propose_upgrade`, `vote`,
+`delegate`, `revoke_delegation`, `finalize`, `execute`, `cancel`,
+`get_proposal`, `get_proposals`, `get_config`, `get_admin`,
+`time_until_executable`.
+
+For each function the page documents:
+
+- **Category** — Initialization / Admin / Proposal Lifecycle / Read-only.
+- **Auth** — who must sign (e.g. "Admin must sign", "Proposer must sign",
+  "Anyone — no authentication required").
+- **Description** — drawn from the doc comments in `lib.rs` and `governance.rs`.
+- **Parameters** table — each parameter's exact type from the function signature
+  in `lib.rs` (`Address`, `BytesN<32>`, `String`, `u32`, `u64`, `bool`).
+- **Returns** — the return type and what it means.
+- **Errors** table — every error variant the function can return, with its
+  numeric code from the `#[repr(u32)]` `Error` enum in `types.rs` and the exact
+  trigger condition. The error codes were cross-checked against `types.rs`.
+- **CLI Example** — a `stellar contract invoke` command with all required
+  `--param value` flags matching the function signature. Read-only functions
+  note that `--source` only pays fees.
+
+A short intro explains the Stellar type mapping used throughout (`Address` →
+Strkey `G…`/`C…`, `BytesN<32>` → 64-char hex, `String` → UTF-8, integers →
+integer). The final Error Reference section points to the README's error-code
+table for the complete list of all 25 `Error` variants, including the note that
+`ProposalDefeated` (8) is defined but never returned.
+
+Beyond the twelve functions named in the issue, the reference also documents
+`delegate`, `revoke_delegation`, and `get_proposals`, which are public functions
+in `lib.rs`, so the reference is complete rather than partial.
+
+### Why
+
+The README has a summary API table but no per-function reference with parameter
+types, return types, all error variants and their numeric codes, auth
+requirements, or CLI invocation examples. Integrators had to read `lib.rs`,
+`governance.rs`, and `types.rs` directly to find this information. The new page
+gives them a single, cross-checked reference.
+
+### Verification
+
+`bash scripts/check_claims.sh` → OK. Every parameter type was checked against
+the `pub fn` signatures in `lib.rs`; every error code was checked against the
+`Error` enum in `types.rs`. No contract source or test files were changed;
+`cargo fmt`/`clippy` are unaffected.
+
+Closes #92

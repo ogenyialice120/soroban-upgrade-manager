@@ -1068,3 +1068,43 @@ already corrected in earlier entries and do not recur.
 Rust source files were changed).
 
 Closes #103
+
+---
+
+## 2026-11-24 — docs/writing-target-contracts-82 (Issue #82)
+
+### Changes
+
+**docs/writing-target-contracts.md** — new file.
+
+Comprehensive guide for writing a Soroban contract that can be safely upgraded
+through the upgrade manager. Sections cover:
+
+1. Storing the manager address at deploy time via `__constructor` (why
+   `require_auth()` is intentionally omitted in the constructor).
+2. Calling `manager.require_auth()` in `upgrade()` before
+   `update_current_contract_wasm` — including the full code from
+   `example-target/src/lib.rs`.
+3. Storage layout compatibility rules: which changes are safe (adding keys,
+   removing keys) and which are unsafe (changing value types), with guidance
+   on performing migrations inside the old `upgrade()` function.
+4. Constructor-only initialization and the front-running risk of a separate
+   initializer.
+5. The checks-effects-interactions pattern in `upgrade()`.
+6. A `get_manager()` read-only helper.
+7. A "Common pitfalls" section: forgetting auth, changing storage layout,
+   using a separate initializer.
+
+Every code snippet is taken verbatim from `contracts/example-target/src/lib.rs`.
+
+### Why
+
+The walkthrough contained only a brief snippet of the `upgrade()` function.
+There was no self-contained guide explaining why each piece is necessary,
+what the failure modes are, or how to handle storage migration across upgrades.
+
+### Test results
+
+`bash scripts/check_claims.sh` → OK. No Rust source files were changed.
+
+Closes #82

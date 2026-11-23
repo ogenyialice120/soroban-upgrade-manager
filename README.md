@@ -250,7 +250,7 @@ The v2 upload transaction hash was not recorded.
 
 9. Propose and vote:
    ```bash
-   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- propose_upgrade --proposer alice --target "$TARGET_ID" --new_wasm_hash "$V2_HASH" --description "upgrade target to v2"
+   stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- propose_upgrade --proposer alice --target "$TARGET_ID" --new_wasm_hash "$V2_HASH" --title "upgrade target to v2" --description "upgrade target to v2" --metadata_hash 0000000000000000000000000000000000000000000000000000000000000000
    stellar contract invoke --id "$MANAGER_ID" --source alice --network testnet -- vote --voter alice --proposal_id 0 --approve true
    ```
 
@@ -306,8 +306,14 @@ stellar contract invoke \
   --proposer <PROPOSER_ADDRESS> \
   --target <TARGET_CONTRACT_ID> \
   --new_wasm_hash <WASM_HASH_HEX> \
-  --description "Upgrade to v2: add rate limiting"
+  --title "Upgrade to v2: add rate limiting" \
+  --description "Upgrade to v2: add rate limiting" \
+  --metadata_hash 0000000000000000000000000000000000000000000000000000000000000000
 ```
+
+> `--title` (1–128 bytes) and `--metadata_hash` (a `BytesN<32>`,
+> 64-character hex string) are required parameters. Use 64 hex zeros for
+> `--metadata_hash` when there is no off-chain metadata.
 
 ### 3. Vote
 

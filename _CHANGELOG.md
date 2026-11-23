@@ -1010,67 +1010,61 @@ Closes #112
 
 ---
 
-## 2026-11-23 — docs/limitations-93 (Issue #93)
+## 2026-11-23 — docs/clarify-wording-103 (Issue #103)
 
 ### Changes
 
-**docs/limitations.md** (new file) — An in-depth explanation of every limitation
-listed in the README's "Security Model & Limitations" section.
+A review of every documentation file (README.md, docs/walkthrough.md,
+docs/claims-audit.md, CONTRIBUTING.md, SECURITY.md) and every doc comment in
+`contracts/upgrade-manager/src/*.rs` and `contracts/example-target/src/lib.rs`
+turned up no remaining "token holders", no non-existent default, and no use of
+"timelock" to mean the voting period — those were already corrected and are
+recorded in the "REWORDED/REMOVED Claims" table in docs/claims-audit.md. The
+remaining imprecisions were CLI examples whose required parameters did not
+match the actual contract signatures, so they would fail when copied verbatim.
 
-The document covers exactly the eight limitations from that section, in the
-same order:
+**docs/walkthrough.md** — three fixes:
 
-1. **Not sybil-resistant** — why one-address-one-vote has no stake/identity
-   requirement (keeps the contract token-free), the sybil-attack risk, off-chain
-   mitigations (high quorum/threshold, voter allow-list, identity gating,
-   multisig admin), and the planned "sybil resistance" future work.
-2. **Powerful admin key** — the admin's exact powers (cancel, update config,
-   transfer admin) and the boundary (cannot execute without a passing vote),
-   the compromised-key risk, off-chain mitigations (multisig/DAO admin,
-   hardware key, event monitoring, generous timelock), and that no contract
-   change is planned (operational mitigation only).
-3. **Admin can cancel after approval** — why the post-approval cancel is a
-   deliberate safety valve, the unilateral-block risk, off-chain mitigations
-   (multisig admin, cancellation policy, event monitoring), and that it is not
-   in the README's Possible Future Work (noting the unimplemented
-   `DESIGN-veto-window.md` design).
-4. **No proposal deposit** — why deposits were omitted (no token dependency),
-   the spam risk despite the rate limit, off-chain mitigations (high
-   `proposal_min_interval`, allow-list, indexing), and the planned "proposal
-   deposits" future work.
-5. **Timelock starts at finalize** — why the delay is measured from
-   `finalize()`, the dormant-proposal risk, off-chain mitigations (auto-finalize
-   bot, monitoring), and that it is a deliberate design choice, not planned to
-   change.
-6. **Target must authenticate the manager** — the Soroban cross-contract auth
-   requirement, the bypass-governance risk, off-chain mitigations (audit the
-   target, use `example-target` as the reference and `bad-target` as the
-   anti-example, store manager at deploy time), and that it is the target's
-   responsibility, not planned in the manager.
-7. **No expiry** — why proposals do not expire, the stale-vote risk, off-chain
-   mitigations (prompt finalize/cancel, monitoring), and the planned "proposal
-   expiry" future work.
-8. **No WASM compatibility check** — why on-chain verification is infeasible,
-   the bricking risk, off-chain mitigations (compatibility tooling, staging,
-   in-upgrade migration via `migration-target`, report in description), and the
-   planned "WASM compatibility check" future work.
+1. **Step 4 `initialize` command** — added the missing `--proposal_min_interval 0`
+   argument. `initialize` requires all six governance parameters
+   (`voting_period`, `timelock_delay`, `quorum`, `approval_threshold_pct`,
+   `proposal_min_interval`); the command previously listed only five. Added a
+   matching `proposal_min_interval` row to the configuration table.
+2. **Step 4 configuration table note** — changed "All parameters must be >= 1
+   (`approval_threshold_pct` must be 1–100)." to also state that
+   `proposal_min_interval` may be `0` to disable the rate limit, matching the
+   constraint enforced by `validate_config` (which only checks `> 0` for the
+   other four parameters).
+3. **Step 5 `propose_upgrade` command** — added the missing `--title` and
+   `--metadata_hash` arguments. `propose_upgrade` requires seven parameters
+   including `title: String` and `metadata_hash: BytesN<32>`; the command
+   previously omitted both. Added a note that 64 hex zeros are the correct
+   `--metadata_hash` value when there is no off-chain metadata.
 
-Each limitation section has the four requested parts (why it exists, the risk,
-off-chain mitigations, whether planned). A summary table maps each limitation to
-whether a mitigation is planned, and a See Also section links to the README
-Security Model, Possible Future Work, Recommended Workflow, the walkthrough,
-claims-audit, and SECURITY.md.
+**README.md** — two fixes:
+
+4. **Usage § "Propose an upgrade"** — same fix as walkthrough item 3: added the
+   missing `--title` and `--metadata_hash` arguments, plus a note on the zero
+   `metadata_hash`.
+5. **"How to reproduce this run" step 9** — same fix: added `--title` and
+   `--metadata_hash` to the `propose_upgrade` command in the testnet
+   reproduction steps.
 
 ### Why
 
-The README "Security Model & Limitations" section lists the limitations in brief
-bullet points without context. Deployers and integrators need to understand why
-each limitation exists, what can concretely go wrong, and what they can do about
-it today to make informed deployment decisions.
+All five fixes correct CLI examples that contradict the code because required
+function parameters were omitted. The contract function signatures are
+unchanged; only the documented commands were incomplete. No contract logic,
+tests, or doc comments were altered (no `.rs` files were changed), so the
+fixes are documentation-only. The other docs and all source doc comments were
+reviewed and found to be accurate; in particular, "token holders", the
+non-existent default timelock, and "timelock" used for the voting period were
+already corrected in earlier entries and do not recur.
 
 ### Test results
 
-`bash scripts/check_claims.sh` → OK. No contract source or test files were
-changed; `cargo fmt`/`clippy` are unaffected.
+`bash scripts/check_claims.sh` → OK. `cargo fmt --all -- --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are unaffected (no
+Rust source files were changed).
 
-Closes #93
+Closes #103

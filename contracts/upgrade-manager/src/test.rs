@@ -882,6 +882,64 @@ mod tests {
         assert_eq!(client.try_finalize(&id), Err(Ok(Error::VotingStillActive)));
     }
 
+    /// Threshold boundary check: exact percentage match passes (>= not >).
+    ///
+    /// `finalize_voting` uses `(yes_votes * 100) >= (total_votes * threshold_pct)`.
+    /// With quorum=5, threshold=60, 3 YES and 2 NO: 3*100=300 >= 5*60=300 — the
+    /// `>=` operator means the exact boundary passes. This test verifies that
+    /// a proposal at exactly the threshold percentage is finalized as Queued, not
+    /// Defeated.
+    #[test]
+    fn test_threshold_exact_boundary_passes() {
+        let env = Env::default();
+        env.mock_all_auths();
+        // quorum=5, threshold=60: 3 YES + 2 NO = total 5, 3*100=300 >= 5*60=300 → passes.
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100u32, &17_280u32, &5u32, &60u32, &0u32);
+
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "threshold boundary"),
+            &desc(&env, "60% threshold boundary test"),
+            &zero_hash(&env),
+        );
+
+        // Cast 3 YES and 2 NO votes: total = 5 (meets quorum), yes% = 60% (== threshold).
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        for _ in 0..2 {
+            client.vote(&Address::generate(&env), &id, &false);
+        }
+
+        let p = client.get_proposal(&id);
+        assert_eq!(p.yes_votes, 3, "must have 3 YES votes");
+        assert_eq!(p.no_votes, 2, "must have 2 NO votes");
+
+        // Advance past the voting period (voting_period=100).
+        const ADVANCE: u32 = 101;
+        const BUMP: u32 = ADVANCE + 30_000;
+        env.as_contract(&cid, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += ADVANCE);
+
+        // 60% == threshold (>=), so the proposal must be Queued, not Defeated.
+        assert_eq!(
+            client.finalize(&id),
+            ProposalStatus::Queued,
+            "exact threshold boundary (60% == 60%) must pass and produce Queued"
+        );
+    }
+
     #[test]
     fn test_finalize_passes_with_quorum() {
         let (env, admin, cid, client) = setup();

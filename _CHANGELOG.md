@@ -1099,3 +1099,27 @@ approximate.
 `bash scripts/check_claims.sh` → OK. No Rust source files were changed.
 
 Closes #87
+
+---
+
+## 2025-01-27 — test/threshold-exact-boundary-passes-73 (Issue #73)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_threshold_exact_boundary_passes`.
+
+The test initializes with `quorum=5`, `threshold=60`, creates a proposal, casts
+3 YES and 2 NO votes (total=5, meets quorum; 3×100=300 >= 5×60=300), advances
+past the 100-ledger voting period, and asserts `finalize` returns
+`ProposalStatus::Queued`. The key invariant is that `finalize_voting` uses `>=`
+(not `>`), so a proposal at exactly the threshold percentage passes.
+
+**Why:** The governance code uses `(yes_votes * 100) >= (total_votes * threshold_pct)`.
+No test verified the exact-equality boundary of this expression. A proposal at
+exactly 60% with threshold=60 must pass; without this test, a future change from
+`>=` to `>` would go undetected.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
+
+Closes #73

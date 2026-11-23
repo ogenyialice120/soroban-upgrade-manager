@@ -1122,3 +1122,16 @@ this invariant. The new test proves the host enforces it in the mock environment
 --all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
 
 Closes #71
+
+## 2025-07-14 — test/threshold-100-requires-unanimous-62
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_threshold_100_requires_unanimous`: initializes with `approval_threshold_pct = 100` and `quorum = 3`. Proposal A (3 YES) finalizes to `Queued`; proposal B (2 YES + 1 NO) finalizes to `Defeated`, proving the unanimous requirement.
+
+**Why:** `finalize_voting` with `threshold = 100` collapses to `yes_votes >= total_votes`. No test covered this boundary, which is a meaningful production configuration when unanimous approval is required.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes.
+
+Closes #62

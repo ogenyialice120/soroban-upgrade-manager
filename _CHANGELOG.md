@@ -1068,3 +1068,44 @@ already corrected in earlier entries and do not recur.
 Rust source files were changed).
 
 Closes #103
+
+---
+
+## 2026-11-24 — docs/threat-model-88 (Issue #88)
+
+### Changes
+
+**docs/threat-model.md** — new file.
+
+Formal threat model document with five adversaries: malicious proposer
+(spammer), sybil voter, compromised admin key, malicious target contract, and
+front-runner. For each adversary the document lists the attack surface, what
+the contract does to mitigate the threat (with the specific function and error
+variant), relevant tests in `test.rs`, and the residual risk. A summary table
+maps all five threats to their key functions and error codes. Sections conclude
+with cross-references to the README security section and "Possible Future Work".
+
+All cited functions (`propose_upgrade`, `create_proposal`, `cast_vote`,
+`require_admin`, `cancel_proposal`, `invoke_upgrade`, `execute`), error
+variants (`ProposalRateLimitExceeded`, `AlreadyVoted`, `Unauthorized`,
+`ProposalFinalized`), and tests (`test_double_vote_fails`, `test_vote_yes_no`,
+`test_cancel_by_admin`, `test_cancel_queued_proposal`,
+`test_cancel_by_non_admin_fails`, `test_auth_cancel_non_admin_fails`,
+`test_failed_upgrade_leaves_proposal_queued`,
+`test_execute_with_error_returning_target`,
+`test_real_example_target_upgrade_rejects_non_manager`,
+`test_double_execute_fails`, `test_cancel_queued_proposal`) exist in the
+source and test files.
+
+### Why
+
+No formal threat model existed. The README's "Security Model & Limitations"
+section listed known limitations without organizing them by adversary, attack
+surface, and residual risk. This document provides a structured view that
+maps each threat to code paths and tests.
+
+### Test results
+
+`bash scripts/check_claims.sh` → OK. No Rust source files were changed.
+
+Closes #88

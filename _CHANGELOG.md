@@ -1010,59 +1010,61 @@ Closes #112
 
 ---
 
-## 2026-11-23 — docs/first-upgrade-tutorial-97 (Issue #97)
+## 2026-11-23 — docs/clarify-wording-103 (Issue #103)
 
 ### Changes
 
-**docs/first-upgrade-tutorial.md** (new file) — A step-by-step "first upgrade"
-tutorial aimed at readers with zero Stellar CLI experience.
+A review of every documentation file (README.md, docs/walkthrough.md,
+docs/claims-audit.md, CONTRIBUTING.md, SECURITY.md) and every doc comment in
+`contracts/upgrade-manager/src/*.rs` and `contracts/example-target/src/lib.rs`
+turned up no remaining "token holders", no non-existent default, and no use of
+"timelock" to mean the voting period — those were already corrected and are
+recorded in the "REWORDED/REMOVED Claims" table in docs/claims-audit.md. The
+remaining imprecisions were CLI examples whose required parameters did not
+match the actual contract signatures, so they would fail when copied verbatim.
 
-The tutorial is self-contained: a beginner can follow it from a clean machine
-to a verified v1→v2 upgrade on testnet. It covers, in order:
+**docs/walkthrough.md** — three fixes:
 
-1. Installing the official Stellar CLI (`curl … install.sh | sh`).
-2. Installing Rust via rustup and the `wasm32v1-none` target (with a note that
-   `wasm32-unknown-unknown` is rejected by the network).
-3. Cloning the repo and building the manager and v1 example target.
-4. Configuring the testnet network.
-5. Generating and funding a single test account (`alice`) via Friendbot.
-6. Deploying the upgrade manager.
-7. Deploying the example-target (v1), passing the manager to the constructor,
-   and confirming `version` returns `1`.
-8. Initializing the manager with fast parameters.
-9. Building the v2 target (`--features v2`), uploading it, and recording the
-   hash.
-10. Proposing the upgrade, voting YES, and confirming the vote.
-11. Waiting the voting period, then finalizing (→ `Queued`).
-12. Waiting the timelock, then executing.
-13. Verifying `version` returns `2` and the proposal is `Executed`.
+1. **Step 4 `initialize` command** — added the missing `--proposal_min_interval 0`
+   argument. `initialize` requires all six governance parameters
+   (`voting_period`, `timelock_delay`, `quorum`, `approval_threshold_pct`,
+   `proposal_min_interval`); the command previously listed only five. Added a
+   matching `proposal_min_interval` row to the configuration table.
+2. **Step 4 configuration table note** — changed "All parameters must be >= 1
+   (`approval_threshold_pct` must be 1–100)." to also state that
+   `proposal_min_interval` may be `0` to disable the rate limit, matching the
+   constraint enforced by `validate_config` (which only checks `> 0` for the
+   other four parameters).
+3. **Step 5 `propose_upgrade` command** — added the missing `--title` and
+   `--metadata_hash` arguments. `propose_upgrade` requires seven parameters
+   including `title: String` and `metadata_hash: BytesN<32>`; the command
+   previously omitted both. Added a note that 64 hex zeros are the correct
+   `--metadata_hash` value when there is no off-chain metadata.
 
-It uses `voting_period=20`, `timelock_delay=20`, `quorum=1`,
-`approval_threshold_pct=51`, `proposal_min_interval=0` (matching the README
-"Verified on Stellar testnet" section), so the two waits are ~2 minutes each
-rather than ~24 hours. A single account plays admin, proposer, and voter, which
-quorum=1 makes sufficient. Every CLI command matches the real contract
-signatures — `initialize` includes all six parameters, and `propose_upgrade`
-includes all six named arguments (`proposer`, `target`, `new_wasm_hash`,
-`title`, `description`, `metadata_hash`) with a note that 64 hex zeros are the
-correct `metadata_hash` when there is no off-chain metadata.
+**README.md** — two fixes:
 
-The tutorial includes a ledger-timing explanation, a recap diagram of the two
-time windows, a troubleshooting table, and a "What to read next" section that
-cross-references `docs/walkthrough.md` for the production-sized, multi-voter
-setup.
+4. **Usage § "Propose an upgrade"** — same fix as walkthrough item 3: added the
+   missing `--title` and `--metadata_hash` arguments, plus a note on the zero
+   `metadata_hash`.
+5. **"How to reproduce this run" step 9** — same fix: added `--title` and
+   `--metadata_hash` to the `propose_upgrade` command in the testnet
+   reproduction steps.
 
 ### Why
 
-The existing `docs/walkthrough.md` is comprehensive but assumes the reader
-already knows the Stellar CLI and uses production-sized parameters (≈24-hour
-waits, three voters). A simpler, faster, single-account tutorial lowers the
-barrier to entry for complete beginners and lets them see a full upgrade
-succeed in a few minutes.
+All five fixes correct CLI examples that contradict the code because required
+function parameters were omitted. The contract function signatures are
+unchanged; only the documented commands were incomplete. No contract logic,
+tests, or doc comments were altered (no `.rs` files were changed), so the
+fixes are documentation-only. The other docs and all source doc comments were
+reviewed and found to be accurate; in particular, "token holders", the
+non-existent default timelock, and "timelock" used for the voting period were
+already corrected in earlier entries and do not recur.
 
 ### Test results
 
-`bash scripts/check_claims.sh` → OK. No contract source or test files were
-changed; `cargo fmt`/`clippy` are unaffected.
+`bash scripts/check_claims.sh` → OK. `cargo fmt --all -- --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are unaffected (no
+Rust source files were changed).
 
-Closes #97
+Closes #103

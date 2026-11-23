@@ -1122,3 +1122,17 @@ this invariant. The new test proves the host enforces it in the mock environment
 --all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
 
 Closes #71
+
+## 2025-07-14 — test/execute-with-budget-consuming-target-65
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `budget_consuming_target_contract` sub-module: a helper contract whose `upgrade()` performs 8 storage writes and 8 storage reads before calling `update_current_contract_wasm`, simulating a migration-heavy upgrade.
+- Added `test_execute_with_budget_consuming_target`: runs the full governance flow (initialize → propose → vote × 3 → advance past voting → finalize → advance past timelock → execute) against the budget-consuming target and asserts the proposal transitions to `Executed`.
+
+**Why:** No test verified that `execute()` succeeds when the target's `upgrade()` performs significant work before calling `update_current_contract_wasm`. This is important for production contracts that do storage migration before swapping WASM.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes.
+
+Closes #65

@@ -1,0 +1,11 @@
+[files]
+extend-exclude = ["target/**", "contracts/**", "Cargo.lock", "scripts/**"]
+[default.extend-words]
+Soroban = "Soroban"
+soroban = "soroban"
+Stellar = "Stellar"
+WASM = "WASM"
+timelock = "timelock"
+quorum = "quorum"
+sybil = "sybil"
+multisig = "multisig"

@@ -1102,24 +1102,23 @@ Closes #87
 
 ---
 
-## 2025-01-27 — test/threshold-exact-boundary-passes-73 (Issue #73)
+## 2025-01-27 — test/example-target-second-constructor-fails-71 (Issue #71)
 
 ### Changes
 
-**contracts/upgrade-manager/src/test.rs** — Added `test_threshold_exact_boundary_passes`.
+**contracts/upgrade-manager/src/test.rs** — Added `test_example_target_second_constructor_fails`.
 
-The test initializes with `quorum=5`, `threshold=60`, creates a proposal, casts
-3 YES and 2 NO votes (total=5, meets quorum; 3×100=300 >= 5×60=300), advances
-past the 100-ledger voting period, and asserts `finalize` returns
-`ProposalStatus::Queued`. The key invariant is that `finalize_voting` uses `>=`
-(not `>`), so a proposal at exactly the threshold percentage passes.
+The test deploys `ExampleTarget` via `env.register(ExampleTarget, (manager_id,))`,
+confirms `get_manager()` and `version()` return expected values, then attempts to
+invoke `__constructor` again via `env.try_invoke_contract` with a new manager
+address and asserts the result is an error. The Soroban host prevents re-invoking
+the constructor after deployment, so the second call fails at the host level.
 
-**Why:** The governance code uses `(yes_votes * 100) >= (total_votes * threshold_pct)`.
-No test verified the exact-equality boundary of this expression. A proposal at
-exactly 60% with threshold=60 must pass; without this test, a future change from
-`>=` to `>` would go undetected.
+**Why:** The `example-target` doc comment states "The constructor is called
+**atomically** during deployment and cannot be called again." No test verified
+this invariant. The new test proves the host enforces it in the mock environment.
 
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace
 --all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
 
-Closes #73
+Closes #71

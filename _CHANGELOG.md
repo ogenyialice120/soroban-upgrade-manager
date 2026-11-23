@@ -1007,3 +1007,62 @@ Documents the full design for making the admin's power to cancel a `Queued` prop
 **Test results:** N/A — design document only. No contract source or test changes. `bash scripts/check_claims.sh` → OK.
 
 Closes #112
+
+---
+
+## 2026-11-23 — docs/first-upgrade-tutorial-97 (Issue #97)
+
+### Changes
+
+**docs/first-upgrade-tutorial.md** (new file) — A step-by-step "first upgrade"
+tutorial aimed at readers with zero Stellar CLI experience.
+
+The tutorial is self-contained: a beginner can follow it from a clean machine
+to a verified v1→v2 upgrade on testnet. It covers, in order:
+
+1. Installing the official Stellar CLI (`curl … install.sh | sh`).
+2. Installing Rust via rustup and the `wasm32v1-none` target (with a note that
+   `wasm32-unknown-unknown` is rejected by the network).
+3. Cloning the repo and building the manager and v1 example target.
+4. Configuring the testnet network.
+5. Generating and funding a single test account (`alice`) via Friendbot.
+6. Deploying the upgrade manager.
+7. Deploying the example-target (v1), passing the manager to the constructor,
+   and confirming `version` returns `1`.
+8. Initializing the manager with fast parameters.
+9. Building the v2 target (`--features v2`), uploading it, and recording the
+   hash.
+10. Proposing the upgrade, voting YES, and confirming the vote.
+11. Waiting the voting period, then finalizing (→ `Queued`).
+12. Waiting the timelock, then executing.
+13. Verifying `version` returns `2` and the proposal is `Executed`.
+
+It uses `voting_period=20`, `timelock_delay=20`, `quorum=1`,
+`approval_threshold_pct=51`, `proposal_min_interval=0` (matching the README
+"Verified on Stellar testnet" section), so the two waits are ~2 minutes each
+rather than ~24 hours. A single account plays admin, proposer, and voter, which
+quorum=1 makes sufficient. Every CLI command matches the real contract
+signatures — `initialize` includes all six parameters, and `propose_upgrade`
+includes all six named arguments (`proposer`, `target`, `new_wasm_hash`,
+`title`, `description`, `metadata_hash`) with a note that 64 hex zeros are the
+correct `metadata_hash` when there is no off-chain metadata.
+
+The tutorial includes a ledger-timing explanation, a recap diagram of the two
+time windows, a troubleshooting table, and a "What to read next" section that
+cross-references `docs/walkthrough.md` for the production-sized, multi-voter
+setup.
+
+### Why
+
+The existing `docs/walkthrough.md` is comprehensive but assumes the reader
+already knows the Stellar CLI and uses production-sized parameters (≈24-hour
+waits, three voters). A simpler, faster, single-account tutorial lowers the
+barrier to entry for complete beginners and lets them see a full upgrade
+succeed in a few minutes.
+
+### Test results
+
+`bash scripts/check_claims.sh` → OK. No contract source or test files were
+changed; `cargo fmt`/`clippy` are unaffected.
+
+Closes #97

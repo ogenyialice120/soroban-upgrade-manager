@@ -978,7 +978,47 @@ mod tests {
         assert_eq!(client.finalize(&id), ProposalStatus::Defeated);
     }
 
-    /// Quorum met entirely by NO votes → Defeated (0% YES < 51% threshold).
+    /// When quorum is u32::MAX no realistic vote count can reach it, so finalize
+    /// must always return Defeated regardless of the YES/NO split.
+    #[test]
+    fn test_max_quorum_always_defeated() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+        // quorum = u32::MAX: total_votes can never reach this in practice.
+        client.initialize(&admin, &100u32, &100u32, &u32::MAX, &51u32, &0u32);
+
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "max quorum"),
+            &desc(&env, "quorum is u32::MAX — always defeated"),
+            &zero_hash(&env),
+        );
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+
+        const BUMP: u32 = 50_000;
+        env.as_contract(&cid, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+
+        assert_eq!(
+            client.finalize(&id),
+            ProposalStatus::Defeated,
+            "quorum=u32::MAX must always produce Defeated"
+        );
+    }
+
     #[test]
     fn test_finalize_defeated_all_no_votes() {
         let (env, admin, cid, client) = setup();

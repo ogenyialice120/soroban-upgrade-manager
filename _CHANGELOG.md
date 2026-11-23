@@ -1122,3 +1122,17 @@ this invariant. The new test proves the host enforces it in the mock environment
 --all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
 
 Closes #71
+
+## 2026-11-23 — test/max-quorum-always-defeated-61
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_max_quorum_always_defeated`: initializes with `quorum = u32::MAX`, `voting_period = 100`, `timelock_delay = 100`, `threshold = 51`. Creates a proposal, casts 3 YES votes, advances past the voting period, and asserts `finalize` returns `ProposalStatus::Defeated`.
+- Restored missing `#[test]` attribute on the pre-existing `test_finalize_defeated_all_no_votes` function, which had been orphaned when the new test was inserted above it.
+
+**Why:** `finalize_voting` checks `total_votes >= proposal.snap_quorum`. With `quorum = u32::MAX`, the sum of `yes_votes + no_votes` (both `u32`) can never reach `u32::MAX` in practice, so every proposal must be `Defeated`. No test verified this extreme boundary value, leaving a gap in coverage for the quorum guard.
+
+**Test results:** `cargo fmt --all -- --check` → clean; `cargo clippy --workspace --all-targets -- -D warnings` → clean; `cargo test --workspace` → 112 passed, 0 failed.
+
+Closes #61

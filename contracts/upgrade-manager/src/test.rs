@@ -940,6 +940,36 @@ mod tests {
         assert_eq!(client.finalize(&id), ProposalStatus::Defeated);
     }
 
+    /// Finalize on a Cancelled proposal returns VotingClosed.
+    ///
+    /// `finalize_voting` checks `proposal.status != ProposalStatus::Active` and
+    /// returns `Error::VotingClosed` for any other status. `cancel_proposal` sets
+    /// the status to Cancelled. This test verifies the Cancelled path explicitly,
+    /// separate from `test_finalize_already_queued_fails` which covers Queued.
+    #[test]
+    fn test_finalize_on_cancelled_returns_voting_closed() {
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        // Cancel the Active proposal.
+        client.cancel(&admin, &id);
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Cancelled);
+
+        // Attempting to finalize a Cancelled proposal must return VotingClosed.
+        assert_eq!(
+            client.try_finalize(&id),
+            Err(Ok(Error::VotingClosed)),
+            "finalize on a Cancelled proposal must return VotingClosed"
+        );
+    }
+
     /// Finalize on an already-Queued proposal fails with VotingClosed.
     #[test]
     fn test_finalize_already_queued_fails() {

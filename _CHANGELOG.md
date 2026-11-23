@@ -1099,3 +1099,28 @@ approximate.
 `bash scripts/check_claims.sh` → OK. No Rust source files were changed.
 
 Closes #87
+
+---
+
+## 2025-01-27 — test/finalize-on-cancelled-returns-voting-closed-74 (Issue #74)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs** — Added `test_finalize_on_cancelled_returns_voting_closed`.
+
+The test creates an Active proposal, cancels it via `client.cancel(&admin, &id)`,
+then calls `client.try_finalize(&id)` and asserts the result is
+`Err(Ok(Error::VotingClosed))`. This covers the Cancelled status path in
+`finalize_voting`, which checks `proposal.status != ProposalStatus::Active` and
+returns `Error::VotingClosed` for any non-Active status. The existing
+`test_finalize_already_queued_fails` covers the Queued path; this test covers
+Cancelled explicitly.
+
+**Why:** `finalize_voting` returns `VotingClosed` for any non-Active proposal.
+The Cancelled status was not covered by any finalize test, leaving a gap in the
+error-path matrix for `finalize`.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
+
+Closes #74

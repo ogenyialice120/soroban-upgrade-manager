@@ -1123,16 +1123,16 @@ this invariant. The new test proves the host enforces it in the mock environment
 
 Closes #71
 
-## 2026-11-23 — test/max-quorum-always-defeated-61
+## 2025-07-14 — test/execute-with-budget-consuming-target-65
 
 ### Changes
 
 **contracts/upgrade-manager/src/test.rs**
-- Added `test_max_quorum_always_defeated`: initializes with `quorum = u32::MAX`, `voting_period = 100`, `timelock_delay = 100`, `threshold = 51`. Creates a proposal, casts 3 YES votes, advances past the voting period, and asserts `finalize` returns `ProposalStatus::Defeated`.
-- Restored missing `#[test]` attribute on the pre-existing `test_finalize_defeated_all_no_votes` function, which had been orphaned when the new test was inserted above it.
+- Added `budget_consuming_target_contract` sub-module: a helper contract whose `upgrade()` performs 8 storage writes and 8 storage reads before calling `update_current_contract_wasm`, simulating a migration-heavy upgrade.
+- Added `test_execute_with_budget_consuming_target`: runs the full governance flow (initialize → propose → vote × 3 → advance past voting → finalize → advance past timelock → execute) against the budget-consuming target and asserts the proposal transitions to `Executed`.
 
-**Why:** `finalize_voting` checks `total_votes >= proposal.snap_quorum`. With `quorum = u32::MAX`, the sum of `yes_votes + no_votes` (both `u32`) can never reach `u32::MAX` in practice, so every proposal must be `Defeated`. No test verified this extreme boundary value, leaving a gap in coverage for the quorum guard.
+**Why:** No test verified that `execute()` succeeds when the target's `upgrade()` performs significant work before calling `update_current_contract_wasm`. This is important for production contracts that do storage migration before swapping WASM.
 
-**Test results:** `cargo fmt --all -- --check` → clean; `cargo clippy --workspace --all-targets -- -D warnings` → clean; `cargo test --workspace` → 112 passed, 0 failed.
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes.
 
-Closes #61
+Closes #65

@@ -1122,3 +1122,16 @@ this invariant. The new test proves the host enforces it in the mock environment
 --all-targets -- -D warnings` clean; `cargo test --workspace` → 107 passed, 0 failed.
 
 Closes #71
+
+## 2025-07-14 — test/admin-transfer-during-active-proposal-54
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_admin_transfer_during_active_proposal`: creates a proposal while the original admin is active, transfers admin to a new address, asserts the old admin's `cancel` returns `Unauthorized`, then asserts the new admin can cancel and the proposal becomes `Cancelled`.
+
+**Why:** No test verified that transferring admin mid-proposal correctly updates who can cancel. `cancel_proposal` reads the admin from storage at call time, so the old admin immediately loses the ability to cancel after `transfer_admin` changes the stored admin address.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes.
+
+Closes #54

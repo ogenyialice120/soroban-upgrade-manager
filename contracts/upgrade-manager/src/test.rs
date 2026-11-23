@@ -1577,6 +1577,49 @@ mod tests {
         assert_eq!(client.try_cancel(&admin, &id), Err(Ok(Error::Unauthorized)));
     }
 
+    /// Transferring admin while a proposal is Active means the old admin
+    /// can no longer cancel and the new admin can.
+    ///
+    /// `cancel_proposal` reads the current admin from storage via `load_admin`.
+    /// After `transfer_admin`, that stored value changes, so the old admin's
+    /// address no longer matches and cancel returns Unauthorized.
+    #[test]
+    fn test_admin_transfer_during_active_proposal() {
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+
+        // Create a proposal while the original admin is in place.
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "in-flight"),
+            &desc(&env, "proposal active during admin transfer"),
+            &zero_hash(&env),
+        );
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Active);
+
+        // Transfer admin to a new address while the proposal is still Active.
+        let new_admin = Address::generate(&env);
+        client.transfer_admin(&admin, &new_admin);
+        assert_eq!(client.get_admin(), new_admin);
+
+        // Old admin can no longer cancel.
+        assert_eq!(
+            client.try_cancel(&admin, &id),
+            Err(Ok(Error::Unauthorized)),
+            "old admin must not be able to cancel after transfer"
+        );
+
+        // New admin can cancel successfully.
+        client.cancel(&new_admin, &id);
+        assert_eq!(
+            client.get_proposal(&id).status,
+            ProposalStatus::Cancelled,
+            "proposal must be Cancelled after new admin cancels"
+        );
+    }
+
     // -----------------------------------------------------------------------
     // TTL — verified with soroban-sdk testutils
     // -----------------------------------------------------------------------

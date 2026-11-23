@@ -1046,6 +1046,87 @@ mod tests {
         assert_eq!(client.finalize(&id), ProposalStatus::Defeated);
     }
 
+    /// With approval_threshold_pct = 100, every vote must be YES for the
+    /// proposal to pass. A single NO vote causes Defeated.
+    ///
+    /// `finalize_voting` checks `(yes_votes * 100) >= (total_votes * threshold)`.
+    /// With threshold = 100 this collapses to `yes_votes >= total_votes`.
+    #[test]
+    fn test_threshold_100_requires_unanimous() {
+        // --- Proposal A: 3 YES, 0 NO → must pass (Queued) ---
+        {
+            let env = Env::default();
+            env.mock_all_auths();
+            let cid = env.register(UpgradeManager, ());
+            let client = UpgradeManagerClient::new(&env, &cid);
+            let admin = Address::generate(&env);
+            client.initialize(&admin, &100u32, &100u32, &3u32, &100u32, &0u32);
+
+            let target = Address::generate(&env);
+            let id = client.propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "unanimous A"),
+                &desc(&env, "threshold 100 all YES"),
+                &zero_hash(&env),
+            );
+            for _ in 0..3 {
+                client.vote(&Address::generate(&env), &id, &true);
+            }
+            const BUMP: u32 = 50_000;
+            env.as_contract(&cid, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+            });
+            env.ledger().with_mut(|l| l.sequence_number += 101);
+            assert_eq!(
+                client.finalize(&id),
+                ProposalStatus::Queued,
+                "3 YES with threshold=100 must be Queued"
+            );
+        }
+
+        // --- Proposal B: 2 YES, 1 NO → must fail (Defeated) ---
+        {
+            let env = Env::default();
+            env.mock_all_auths();
+            let cid = env.register(UpgradeManager, ());
+            let client = UpgradeManagerClient::new(&env, &cid);
+            let admin = Address::generate(&env);
+            client.initialize(&admin, &100u32, &100u32, &3u32, &100u32, &0u32);
+
+            let target = Address::generate(&env);
+            let id = client.propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "unanimous B"),
+                &desc(&env, "threshold 100 one NO"),
+                &zero_hash(&env),
+            );
+            for _ in 0..2 {
+                client.vote(&Address::generate(&env), &id, &true);
+            }
+            client.vote(&Address::generate(&env), &id, &false);
+            const BUMP: u32 = 50_000;
+            env.as_contract(&cid, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+            });
+            env.ledger().with_mut(|l| l.sequence_number += 101);
+            assert_eq!(
+                client.finalize(&id),
+                ProposalStatus::Defeated,
+                "2 YES + 1 NO with threshold=100 must be Defeated"
+            );
+        }
+    }
+
     /// Finalize on a Cancelled proposal returns VotingClosed.
     ///
     /// `finalize_voting` checks `proposal.status != ProposalStatus::Active` and

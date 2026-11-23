@@ -130,6 +130,53 @@ mod error_target_contract {
     }
 }
 
+/// A target contract whose upgrade() performs several storage reads and writes
+/// before calling update_current_contract_wasm, simulating a migration that
+/// consumes a meaningful portion of the compute budget.
+#[cfg(test)]
+mod budget_consuming_target_contract {
+    use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env};
+
+    #[contract]
+    pub struct BudgetConsumingTarget;
+
+    #[contractimpl]
+    impl BudgetConsumingTarget {
+        pub fn __constructor(env: Env, manager: Address) {
+            env.storage()
+                .instance()
+                .set(&symbol_short!("manager"), &manager);
+        }
+
+        pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+            let manager: Address = env
+                .storage()
+                .instance()
+                .get(&symbol_short!("manager"))
+                .expect("manager not set");
+            manager.require_auth();
+
+            // Simulate migration work: write and read back several storage entries.
+            for i in 0u32..8u32 {
+                env.storage().instance().set(&i, &i);
+            }
+            for i in 0u32..8u32 {
+                let _: u32 = env
+                    .storage()
+                    .instance()
+                    .get(&i)
+                    .expect("migration key must exist");
+            }
+
+            env.deployer().update_current_contract_wasm(new_wasm_hash);
+        }
+
+        pub fn version(_env: Env) -> u32 {
+            1
+        }
+    }
+}
+
 // -----------------------------------------------------------------------
 // Main test module
 // -----------------------------------------------------------------------
@@ -147,6 +194,7 @@ mod tests {
 
     use crate::types::{DataKey, Error, ProposalStatus, INSTANCE_TTL_BUMP, PERSISTENT_TTL_BUMP};
 
+    use super::budget_consuming_target_contract::BudgetConsumingTarget;
     use super::error_target_contract::ErrorTarget;
     use super::fixture_target_contract::{FixtureTarget, FixtureTargetClient};
     use super::mock_target_contract::MockTarget;
@@ -2325,6 +2373,78 @@ mod tests {
             "proposal must remain Queued after a target upgrade error"
         );
     }
+
+    /// Execute succeeds when the target's upgrade() does meaningful work
+    /// (storage reads and writes) before calling update_current_contract_wasm.
+    ///
+    /// Exercises the full governance flow through execute() against a target
+    /// whose upgrade() simulates a migration by writing and reading back
+    /// several storage entries. Asserts that execute() succeeds and the
+    /// proposal is Executed.
+    #[test]
+    fn test_execute_with_budget_consuming_target() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let manager_id = env.register(UpgradeManager, ());
+        let manager = UpgradeManagerClient::new(&env, &manager_id);
+        let admin = Address::generate(&env);
+        manager.initialize(&admin, &100u32, &100u32, &3u32, &51u32, &0u32);
+
+        let v2_hash = env
+            .deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
+
+        let target_id = env.register_at(
+            &Address::generate(&env),
+            BudgetConsumingTarget,
+            (manager_id.clone(),),
+        );
+
+        let pid = manager.propose_upgrade(
+            &admin,
+            &target_id,
+            &v2_hash,
+            &title(&env, "budget-consuming upgrade"),
+            &desc(&env, "target upgrade does storage reads and writes"),
+            &zero_hash(&env),
+        );
+        for _ in 0..3 {
+            manager.vote(&Address::generate(&env), &pid, &true);
+        }
+
+        const BUMP: u32 = 50_000;
+        env.as_contract(&manager_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(pid), BUMP, BUMP);
+        });
+        env.as_contract(&target_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+        assert_eq!(manager.finalize(&pid), ProposalStatus::Queued);
+
+        env.as_contract(&manager_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+            env.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Proposal(pid), BUMP, BUMP);
+        });
+        env.as_contract(&target_id, || {
+            env.storage().instance().extend_ttl(BUMP, BUMP);
+        });
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+
+        manager.execute(&pid);
+        assert_eq!(
+            manager.get_proposal(&pid).status,
+            ProposalStatus::Executed,
+            "proposal must be Executed after execute() with a budget-consuming target"
+        );
+    }
+
     /// Real v1→v2 WASM upgrade through the manager using the committed fixture WASMs.
     ///
     /// Registers the real `target_v1.wasm`, asserts `version() == 1`, uploads

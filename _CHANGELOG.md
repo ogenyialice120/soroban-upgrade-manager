@@ -1010,57 +1010,61 @@ Closes #112
 
 ---
 
-## 2026-11-23 — docs/per-function-api-reference-92 (Issue #92)
+## 2026-11-23 — docs/clarify-wording-103 (Issue #103)
 
 ### Changes
 
-**docs/api-reference.md** (new file) — A single-page, per-function API reference
-covering all 15 public functions in the `UpgradeManager` contract:
+A review of every documentation file (README.md, docs/walkthrough.md,
+docs/claims-audit.md, CONTRIBUTING.md, SECURITY.md) and every doc comment in
+`contracts/upgrade-manager/src/*.rs` and `contracts/example-target/src/lib.rs`
+turned up no remaining "token holders", no non-existent default, and no use of
+"timelock" to mean the voting period — those were already corrected and are
+recorded in the "REWORDED/REMOVED Claims" table in docs/claims-audit.md. The
+remaining imprecisions were CLI examples whose required parameters did not
+match the actual contract signatures, so they would fail when copied verbatim.
 
-`initialize`, `update_config`, `transfer_admin`, `propose_upgrade`, `vote`,
-`delegate`, `revoke_delegation`, `finalize`, `execute`, `cancel`,
-`get_proposal`, `get_proposals`, `get_config`, `get_admin`,
-`time_until_executable`.
+**docs/walkthrough.md** — three fixes:
 
-For each function the page documents:
+1. **Step 4 `initialize` command** — added the missing `--proposal_min_interval 0`
+   argument. `initialize` requires all six governance parameters
+   (`voting_period`, `timelock_delay`, `quorum`, `approval_threshold_pct`,
+   `proposal_min_interval`); the command previously listed only five. Added a
+   matching `proposal_min_interval` row to the configuration table.
+2. **Step 4 configuration table note** — changed "All parameters must be >= 1
+   (`approval_threshold_pct` must be 1–100)." to also state that
+   `proposal_min_interval` may be `0` to disable the rate limit, matching the
+   constraint enforced by `validate_config` (which only checks `> 0` for the
+   other four parameters).
+3. **Step 5 `propose_upgrade` command** — added the missing `--title` and
+   `--metadata_hash` arguments. `propose_upgrade` requires seven parameters
+   including `title: String` and `metadata_hash: BytesN<32>`; the command
+   previously omitted both. Added a note that 64 hex zeros are the correct
+   `--metadata_hash` value when there is no off-chain metadata.
 
-- **Category** — Initialization / Admin / Proposal Lifecycle / Read-only.
-- **Auth** — who must sign (e.g. "Admin must sign", "Proposer must sign",
-  "Anyone — no authentication required").
-- **Description** — drawn from the doc comments in `lib.rs` and `governance.rs`.
-- **Parameters** table — each parameter's exact type from the function signature
-  in `lib.rs` (`Address`, `BytesN<32>`, `String`, `u32`, `u64`, `bool`).
-- **Returns** — the return type and what it means.
-- **Errors** table — every error variant the function can return, with its
-  numeric code from the `#[repr(u32)]` `Error` enum in `types.rs` and the exact
-  trigger condition. The error codes were cross-checked against `types.rs`.
-- **CLI Example** — a `stellar contract invoke` command with all required
-  `--param value` flags matching the function signature. Read-only functions
-  note that `--source` only pays fees.
+**README.md** — two fixes:
 
-A short intro explains the Stellar type mapping used throughout (`Address` →
-Strkey `G…`/`C…`, `BytesN<32>` → 64-char hex, `String` → UTF-8, integers →
-integer). The final Error Reference section points to the README's error-code
-table for the complete list of all 25 `Error` variants, including the note that
-`ProposalDefeated` (8) is defined but never returned.
-
-Beyond the twelve functions named in the issue, the reference also documents
-`delegate`, `revoke_delegation`, and `get_proposals`, which are public functions
-in `lib.rs`, so the reference is complete rather than partial.
+4. **Usage § "Propose an upgrade"** — same fix as walkthrough item 3: added the
+   missing `--title` and `--metadata_hash` arguments, plus a note on the zero
+   `metadata_hash`.
+5. **"How to reproduce this run" step 9** — same fix: added `--title` and
+   `--metadata_hash` to the `propose_upgrade` command in the testnet
+   reproduction steps.
 
 ### Why
 
-The README has a summary API table but no per-function reference with parameter
-types, return types, all error variants and their numeric codes, auth
-requirements, or CLI invocation examples. Integrators had to read `lib.rs`,
-`governance.rs`, and `types.rs` directly to find this information. The new page
-gives them a single, cross-checked reference.
+All five fixes correct CLI examples that contradict the code because required
+function parameters were omitted. The contract function signatures are
+unchanged; only the documented commands were incomplete. No contract logic,
+tests, or doc comments were altered (no `.rs` files were changed), so the
+fixes are documentation-only. The other docs and all source doc comments were
+reviewed and found to be accurate; in particular, "token holders", the
+non-existent default timelock, and "timelock" used for the voting period were
+already corrected in earlier entries and do not recur.
 
-### Verification
+### Test results
 
-`bash scripts/check_claims.sh` → OK. Every parameter type was checked against
-the `pub fn` signatures in `lib.rs`; every error code was checked against the
-`Error` enum in `types.rs`. No contract source or test files were changed;
-`cargo fmt`/`clippy` are unaffected.
+`bash scripts/check_claims.sh` → OK. `cargo fmt --all -- --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are unaffected (no
+Rust source files were changed).
 
-Closes #92
+Closes #103

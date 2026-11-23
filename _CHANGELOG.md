@@ -1007,3 +1007,64 @@ Documents the full design for making the admin's power to cancel a `Queued` prop
 **Test results:** N/A — design document only. No contract source or test changes. `bash scripts/check_claims.sh` → OK.
 
 Closes #112
+
+---
+
+## 2026-11-23 — docs/clarify-wording-103 (Issue #103)
+
+### Changes
+
+A review of every documentation file (README.md, docs/walkthrough.md,
+docs/claims-audit.md, CONTRIBUTING.md, SECURITY.md) and every doc comment in
+`contracts/upgrade-manager/src/*.rs` and `contracts/example-target/src/lib.rs`
+turned up no remaining "token holders", no non-existent default, and no use of
+"timelock" to mean the voting period — those were already corrected and are
+recorded in the "REWORDED/REMOVED Claims" table in docs/claims-audit.md. The
+remaining imprecisions were CLI examples whose required parameters did not
+match the actual contract signatures, so they would fail when copied verbatim.
+
+**docs/walkthrough.md** — three fixes:
+
+1. **Step 4 `initialize` command** — added the missing `--proposal_min_interval 0`
+   argument. `initialize` requires all six governance parameters
+   (`voting_period`, `timelock_delay`, `quorum`, `approval_threshold_pct`,
+   `proposal_min_interval`); the command previously listed only five. Added a
+   matching `proposal_min_interval` row to the configuration table.
+2. **Step 4 configuration table note** — changed "All parameters must be >= 1
+   (`approval_threshold_pct` must be 1–100)." to also state that
+   `proposal_min_interval` may be `0` to disable the rate limit, matching the
+   constraint enforced by `validate_config` (which only checks `> 0` for the
+   other four parameters).
+3. **Step 5 `propose_upgrade` command** — added the missing `--title` and
+   `--metadata_hash` arguments. `propose_upgrade` requires seven parameters
+   including `title: String` and `metadata_hash: BytesN<32>`; the command
+   previously omitted both. Added a note that 64 hex zeros are the correct
+   `--metadata_hash` value when there is no off-chain metadata.
+
+**README.md** — two fixes:
+
+4. **Usage § "Propose an upgrade"** — same fix as walkthrough item 3: added the
+   missing `--title` and `--metadata_hash` arguments, plus a note on the zero
+   `metadata_hash`.
+5. **"How to reproduce this run" step 9** — same fix: added `--title` and
+   `--metadata_hash` to the `propose_upgrade` command in the testnet
+   reproduction steps.
+
+### Why
+
+All five fixes correct CLI examples that contradict the code because required
+function parameters were omitted. The contract function signatures are
+unchanged; only the documented commands were incomplete. No contract logic,
+tests, or doc comments were altered (no `.rs` files were changed), so the
+fixes are documentation-only. The other docs and all source doc comments were
+reviewed and found to be accurate; in particular, "token holders", the
+non-existent default timelock, and "timelock" used for the voting period were
+already corrected in earlier entries and do not recur.
+
+### Test results
+
+`bash scripts/check_claims.sh` → OK. `cargo fmt --all -- --check` and
+`cargo clippy --workspace --all-targets -- -D warnings` are unaffected (no
+Rust source files were changed).
+
+Closes #103

@@ -203,7 +203,8 @@ stellar contract invoke \
   --voting_period 17280 \
   --timelock_delay 17280 \
   --quorum 3 \
-  --approval_threshold_pct 51
+  --approval_threshold_pct 51 \
+  --proposal_min_interval 0
 ```
 
 Configuration used in this walkthrough:
@@ -214,8 +215,10 @@ Configuration used in this walkthrough:
 | `timelock_delay` | `17280` | ≈ 24 hours — ledgers between `finalize()` and earliest `execute()` |
 | `quorum` | `3` | At least 3 total votes (YES + NO) required for the proposal to pass |
 | `approval_threshold_pct` | `51` | At least 51% of total votes must be YES |
+| `proposal_min_interval` | `0` | Minimum ledgers between proposals from the same address. `0` disables the rate limit. |
 
-All parameters must be >= 1 (`approval_threshold_pct` must be 1–100).
+All parameters must be >= 1 (`approval_threshold_pct` must be 1–100),
+except `proposal_min_interval`, which may be `0` to disable the rate limit.
 The `initialize` function can only be called once; the admin must sign the
 transaction.
 
@@ -232,11 +235,18 @@ PROPOSAL_ID=$(stellar contract invoke \
   --proposer "$ADMIN_ADDR" \
   --target "$TARGET_ID" \
   --new_wasm_hash "$NEW_WASM_HASH" \
-  --description "Upgrade example-target from v1 to v2")
+  --title "Upgrade example-target from v1 to v2" \
+  --description "Upgrade example-target from v1 to v2" \
+  --metadata_hash 0000000000000000000000000000000000000000000000000000000000000000)
 
 echo "Proposal ID: $PROPOSAL_ID"
 # Expected: 0
 ```
+
+> `--title` (1–128 bytes) and `--metadata_hash` (`BytesN<32>`, a 64-character
+> hex string) are required by the `propose_upgrade` signature. Use 64 hex zeros
+> for `--metadata_hash` when there is no off-chain metadata (it is stored
+> as-is on the proposal).
 
 At this point the proposal is in **Active** status. The voting period ends at
 `voting_ends_at` = `created_at + voting_period` (in ledgers). Anyone can vote

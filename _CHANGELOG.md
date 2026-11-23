@@ -1007,3 +1007,70 @@ Documents the full design for making the admin's power to cancel a `Queued` prop
 **Test results:** N/A — design document only. No contract source or test changes. `bash scripts/check_claims.sh` → OK.
 
 Closes #112
+
+---
+
+## 2026-11-23 — docs/limitations-93 (Issue #93)
+
+### Changes
+
+**docs/limitations.md** (new file) — An in-depth explanation of every limitation
+listed in the README's "Security Model & Limitations" section.
+
+The document covers exactly the eight limitations from that section, in the
+same order:
+
+1. **Not sybil-resistant** — why one-address-one-vote has no stake/identity
+   requirement (keeps the contract token-free), the sybil-attack risk, off-chain
+   mitigations (high quorum/threshold, voter allow-list, identity gating,
+   multisig admin), and the planned "sybil resistance" future work.
+2. **Powerful admin key** — the admin's exact powers (cancel, update config,
+   transfer admin) and the boundary (cannot execute without a passing vote),
+   the compromised-key risk, off-chain mitigations (multisig/DAO admin,
+   hardware key, event monitoring, generous timelock), and that no contract
+   change is planned (operational mitigation only).
+3. **Admin can cancel after approval** — why the post-approval cancel is a
+   deliberate safety valve, the unilateral-block risk, off-chain mitigations
+   (multisig admin, cancellation policy, event monitoring), and that it is not
+   in the README's Possible Future Work (noting the unimplemented
+   `DESIGN-veto-window.md` design).
+4. **No proposal deposit** — why deposits were omitted (no token dependency),
+   the spam risk despite the rate limit, off-chain mitigations (high
+   `proposal_min_interval`, allow-list, indexing), and the planned "proposal
+   deposits" future work.
+5. **Timelock starts at finalize** — why the delay is measured from
+   `finalize()`, the dormant-proposal risk, off-chain mitigations (auto-finalize
+   bot, monitoring), and that it is a deliberate design choice, not planned to
+   change.
+6. **Target must authenticate the manager** — the Soroban cross-contract auth
+   requirement, the bypass-governance risk, off-chain mitigations (audit the
+   target, use `example-target` as the reference and `bad-target` as the
+   anti-example, store manager at deploy time), and that it is the target's
+   responsibility, not planned in the manager.
+7. **No expiry** — why proposals do not expire, the stale-vote risk, off-chain
+   mitigations (prompt finalize/cancel, monitoring), and the planned "proposal
+   expiry" future work.
+8. **No WASM compatibility check** — why on-chain verification is infeasible,
+   the bricking risk, off-chain mitigations (compatibility tooling, staging,
+   in-upgrade migration via `migration-target`, report in description), and the
+   planned "WASM compatibility check" future work.
+
+Each limitation section has the four requested parts (why it exists, the risk,
+off-chain mitigations, whether planned). A summary table maps each limitation to
+whether a mitigation is planned, and a See Also section links to the README
+Security Model, Possible Future Work, Recommended Workflow, the walkthrough,
+claims-audit, and SECURITY.md.
+
+### Why
+
+The README "Security Model & Limitations" section lists the limitations in brief
+bullet points without context. Deployers and integrators need to understand why
+each limitation exists, what can concretely go wrong, and what they can do about
+it today to make informed deployment decisions.
+
+### Test results
+
+`bash scripts/check_claims.sh` → OK. No contract source or test files were
+changed; `cargo fmt`/`clippy` are unaffected.
+
+Closes #93

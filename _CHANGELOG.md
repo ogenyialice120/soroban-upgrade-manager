@@ -1071,40 +1071,31 @@ Closes #103
 
 ---
 
-## 2026-11-24 — docs/writing-target-contracts-82 (Issue #82)
+## 2026-11-24 — docs/ledger-time-87 (Issue #87)
 
 ### Changes
 
-**docs/writing-target-contracts.md** — new file.
+**docs/ledger-time.md** — new file.
 
-Comprehensive guide for writing a Soroban contract that can be safely upgraded
-through the upgrade manager. Sections cover:
-
-1. Storing the manager address at deploy time via `__constructor` (why
-   `require_auth()` is intentionally omitted in the constructor).
-2. Calling `manager.require_auth()` in `upgrade()` before
-   `update_current_contract_wasm` — including the full code from
-   `example-target/src/lib.rs`.
-3. Storage layout compatibility rules: which changes are safe (adding keys,
-   removing keys) and which are unsafe (changing value types), with guidance
-   on performing migrations inside the old `upgrade()` function.
-4. Constructor-only initialization and the front-running risk of a separate
-   initializer.
-5. The checks-effects-interactions pattern in `upgrade()`.
-6. A `get_manager()` read-only helper.
-7. A "Common pitfalls" section: forgetting auth, changing storage layout,
-   using a separate initializer.
-
-Every code snippet is taken verbatim from `contracts/example-target/src/lib.rs`.
+Explains that Stellar ledgers close approximately every 5 seconds but that
+this is not guaranteed (the Stellar protocol targets 5–7 seconds). Provides a
+conversion table: 1 ledger ≈ 5 s, 720 ≈ 1 h, 17 280 ≈ 24 h, 120 960 ≈ 7 d.
+Explains that `voting_ends_at` and `executable_at` are ledger sequence numbers,
+not Unix timestamps, and that all timing in this contract is therefore
+approximate. Notes the TTL constants in `types.rs` as further examples of the
+same approximation. Includes practical guidance on choosing values with a
+safety buffer.
 
 ### Why
 
-The walkthrough contained only a brief snippet of the `upgrade()` function.
-There was no self-contained guide explaining why each piece is necessary,
-what the failure modes are, or how to handle storage migration across upgrades.
+The README and walkthrough both mention the 5 s/ledger figure without
+explaining what it means in practice or that ledger timing is variable. Users
+setting `voting_period` and `timelock_delay` needed a single page to
+understand what these values mean in wall-clock terms and why the mapping is
+approximate.
 
 ### Test results
 
 `bash scripts/check_claims.sh` → OK. No Rust source files were changed.
 
-Closes #82
+Closes #87

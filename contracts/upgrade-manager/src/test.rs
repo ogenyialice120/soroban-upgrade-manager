@@ -213,7 +213,7 @@ mod tests {
     use soroban_sdk::{
         symbol_short,
         testutils::{Address as _, Events, Ledger},
-        Address, BytesN, Env, InvokeError, String, Symbol,
+        Address, BytesN, Env, InvokeError, String, Symbol, TryFromVal,
     };
     use triple_target::{TripleTarget, TripleTargetClient};
 
@@ -295,6 +295,21 @@ mod tests {
                     && topics.get(1).is_some_and(|v| v.shallow_eq(&want1))
             })
             .count()
+    }
+
+    fn event_data(env: &Env, topic0_sym: Symbol, topic1_sym: Symbol) -> soroban_sdk::Val {
+        use soroban_sdk::IntoVal;
+        let want0: soroban_sdk::Val = topic0_sym.into_val(env);
+        let want1: soroban_sdk::Val = topic1_sym.into_val(env);
+        env.events()
+            .all()
+            .iter()
+            .find(|(_, topics, _)| {
+                topics.get(0).is_some_and(|v| v.shallow_eq(&want0))
+                    && topics.get(1).is_some_and(|v| v.shallow_eq(&want1))
+            })
+            .map(|(_, _, data)| (*data).clone())
+            .expect("missing event with expected topics")
     }
 
     // -----------------------------------------------------------------------
@@ -2118,6 +2133,27 @@ mod tests {
             count_events(&env, symbol_short!("admin"), symbol_short!("transfer")) >= 1,
             "missing admin_transferred event"
         );
+    }
+
+    #[test]
+    fn test_event_config_updated_data() {
+        let (env, admin, _cid, client) = setup();
+        client.update_config(&admin, &50u32, &1000u32, &1u32, &51u32, &0u32);
+
+        let data = event_data(&env, symbol_short!("config"), symbol_short!("updated"));
+        assert_eq!(Address::try_from_val(&env, &data).unwrap(), admin);
+    }
+
+    #[test]
+    fn test_event_admin_transferred_data() {
+        let (env, old_admin, _cid, client) = setup();
+        let new_admin = Address::generate(&env);
+        client.transfer_admin(&old_admin, &new_admin);
+
+        let data = event_data(&env, symbol_short!("admin"), symbol_short!("transfer"));
+        let (event_old_admin, event_new_admin) =
+            <(Address, Address)>::try_from_val(&env, &data).unwrap();
+        assert_eq!((event_old_admin, event_new_admin), (old_admin, new_admin));
     }
 
     // -----------------------------------------------------------------------

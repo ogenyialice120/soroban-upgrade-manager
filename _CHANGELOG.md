@@ -1154,31 +1154,15 @@ Closes #57
 
 ---
 
-## 2026-11-24 — docs/89-upgrade-patterns-comparison
+## 2026-11-24 — test/execute-at-exactly-executable-at-51
 
 ### Changes
 
-**docs/comparison.md** — New file. Compares four upgrade patterns: native
-Soroban self-upgrade, this contract, Compound Governor Bravo, and OpenZeppelin
-TimelockController. Covers who can upgrade, voting mechanism, timelock, cancel
-power, audit trail, and cross-contract support, with a dimension-by-dimension
-table and short sections per pattern. States the limitations of this contract
-explicitly (no sybil resistance, no token weighting, no expiry, no WASM
-compatibility check, admin veto) and documents the delegation behavior in
-`cast_vote` (ballot weight = 1 + delegators). External claims cite the
-Compound and OpenZeppelin source files, Compound governance documentation, and
-Stellar's upgrade guide, CAP-0046-03, and SEP-0049.
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_execute_at_exactly_executable_at_succeeds`: initializes with `voting_period=100`, `timelock_delay=100`, quorum 3; proposes an upgrade of a `MockTarget`, casts 3 yes votes, advances past voting, finalizes, reads `executable_at` from `get_proposal` (asserting it is the finalize ledger + 100), sets the ledger sequence to exactly `executable_at` (not one beyond), calls `execute` and asserts the proposal is `Executed`.
 
-**Why:** The README says the contract is "inspired by Compound Governor Bravo
-and OpenZeppelin's TimelockController" and has a short "Why Not" table against
-native Soroban upgrades, but there was no page explaining the trade-offs. The
-new page makes the differences explicit and keeps claims tied to the code and
-to cited external sources, as requested in issue #89.
+**Why:** `assert_timelock_passed` in `timelock.rs` rejects only `sequence < executable_at`, so the ledger equal to `executable_at` is the first one where execution is allowed. The suite tested `executable_at - 1` (fails) and `executable_at + 1` (succeeds), but not the boundary itself. Checked by mutation: changing the condition to `<=` makes the new test fail while `test_execute_one_ledger_before_executable_at_fails` still passes, so that off-by-one was previously undetected. No non-test code changed.
 
-**BREAKING:** None. Documentation only; no contract source changes.
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 128 passed (118 in `soroban-upgrade-manager`), 0 failed; `scripts/check_claims.sh` passed. From the workspace root, `cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml` succeeded. From `contracts/upgrade-manager/tests/fixtures/`, `shasum -a 256 -c SHA256SUMS` verified both `target_v1.wasm` and `target_v2.wasm`.
 
-**Test results:** `bash scripts/check_claims.sh` → OK (exit 0). Relative links
-in `docs/comparison.md` verified against the repository tree. No Rust code was
-changed, so no build or test run was required for this docs-only change.
-
-Closes #89
+Closes #51

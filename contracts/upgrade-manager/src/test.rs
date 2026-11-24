@@ -1591,6 +1591,48 @@ mod tests {
         assert_eq!(client.try_execute(&id), Err(Ok(Error::TimelockNotExpired)));
     }
 
+    /// `assert_timelock_passed` rejects only `sequence < executable_at`, so the
+    /// ledger equal to `executable_at` is the first one where `execute` succeeds.
+    #[test]
+    fn test_execute_at_exactly_executable_at_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+        // voting_period=100, timelock_delay=100, quorum=3, threshold=51
+        client.initialize(&admin, &100u32, &100u32, &3u32, &51u32, &0u32);
+
+        let target = env.register(MockTarget, ());
+        let new_hash = env
+            .deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &new_hash,
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        advance_past_voting(&env, &cid, id);
+        let finalized_at = env.ledger().sequence();
+        assert_eq!(client.finalize(&id), ProposalStatus::Queued);
+
+        let executable_at = client.get_proposal(&id).executable_at;
+        assert_eq!(executable_at, finalized_at + 100);
+
+        // advance to exactly executable_at, not one ledger beyond it
+        env.ledger().with_mut(|l| l.sequence_number = executable_at);
+        assert_eq!(env.ledger().sequence(), executable_at);
+
+        client.execute(&id);
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Executed);
+    }
+
     // -----------------------------------------------------------------------
     // time_until_executable
     // -----------------------------------------------------------------------

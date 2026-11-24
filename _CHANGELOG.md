@@ -1169,7 +1169,7 @@ Closes #51
 
 ---
 
-## 2026-11-24 — test/event-proposal-created-data
+## 2026-11-24 — test/event-vote-cast-data
 
 ### Changes
 

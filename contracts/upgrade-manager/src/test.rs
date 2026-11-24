@@ -4119,4 +4119,72 @@ mod tests {
             );
         });
     }
+
+    /// Table-driven boundary tests for quorum (`total_votes >= snap_quorum`) and
+    /// threshold (`yes_votes * 100 >= total_votes * snap_threshold_pct`) in
+    /// `finalize_voting`.
+    #[test]
+    fn test_quorum_and_threshold_boundary_cases() {
+        // (yes, no, quorum, threshold_pct, expected_pass)
+        let cases: &[(u32, u32, u32, u32, bool)] = &[
+            // Exactly quorum met (4 == 4), exactly threshold met (3*100 == 4*75) -> pass
+            (3, 1, 4, 75, true),
+            // Total votes == quorum (4 == 4), yes/(yes+no) == 50% threshold exactly -> pass
+            (2, 2, 4, 50, true),
+            // Total votes == quorum - 1 (2 == 3 - 1), quorum not met despite 100% yes -> defeat
+            (2, 0, 3, 51, false),
+            // Exact threshold boundary: yes_votes * 100 == total_votes * threshold_pct (100 == 100) -> pass
+            (1, 3, 4, 25, true),
+            // One below threshold boundary: yes_votes * 100 == total_votes * threshold_pct - 1 (200 == 201 - 1) -> defeat
+            (2, 1, 3, 67, false),
+            // Minimum quorum=1, strict 100% threshold, 1 yes / 0 no -> pass
+            (1, 0, 1, 100, true),
+            // Minimum quorum=1, strict 100% threshold, 0 yes / 1 no (0*100 < 1*100) -> defeat
+            (0, 1, 1, 100, false),
+            // Exact 50% tie with quorum=2, threshold=50: 1*100 >= 2*50 (100 >= 100) -> pass
+            (1, 1, 2, 50, true),
+        ];
+
+        for &(yes, no, quorum, threshold_pct, expected_pass) in cases {
+            let env = Env::default();
+            env.mock_all_auths();
+            let cid = env.register(UpgradeManager, ());
+            let client = UpgradeManagerClient::new(&env, &cid);
+            let admin = Address::generate(&env);
+            client.initialize(&admin, &100u32, &17_280u32, &quorum, &threshold_pct, &0u32);
+
+            let target = Address::generate(&env);
+            let id = client.propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "boundary"),
+                &desc(&env, "quorum and threshold boundary test"),
+                &zero_hash(&env),
+            );
+
+            for _ in 0..yes {
+                let voter = Address::generate(&env);
+                client.vote(&voter, &id, &true);
+            }
+            for _ in 0..no {
+                let voter = Address::generate(&env);
+                client.vote(&voter, &id, &false);
+            }
+
+            advance_past_voting(&env, &cid, id);
+            let status = client.finalize(&id);
+
+            let expected_status = if expected_pass {
+                ProposalStatus::Queued
+            } else {
+                ProposalStatus::Defeated
+            };
+            assert_eq!(
+                status, expected_status,
+                "case (yes={yes}, no={no}, quorum={quorum}, threshold_pct={threshold_pct}) expected {expected_status:?}, got {status:?}"
+            );
+            assert_eq!(client.get_proposal(&id).status, expected_status);
+        }
+    }
 }

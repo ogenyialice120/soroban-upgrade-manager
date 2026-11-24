@@ -1151,3 +1151,34 @@ Closes #65
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 125 passed (115 in `soroban-upgrade-manager`), 0 failed; `wasm32v1-none` release build clean; `scripts/check_claims.sh` passed; fixture `SHA256SUMS` OK.
 
 Closes #57
+
+---
+
+## 2026-11-24 — docs/89-upgrade-patterns-comparison
+
+### Changes
+
+**docs/comparison.md** — New file. Compares four upgrade patterns: native
+Soroban self-upgrade, this contract, Compound Governor Bravo, and OpenZeppelin
+TimelockController. Covers who can upgrade, voting mechanism, timelock, cancel
+power, audit trail, and cross-contract support, with a dimension-by-dimension
+table and short sections per pattern. States the limitations of this contract
+explicitly (no sybil resistance, no token weighting, no expiry, no WASM
+compatibility check, admin veto) and documents the delegation behavior in
+`cast_vote` (ballot weight = 1 + delegators). External claims cite the
+Compound and OpenZeppelin source files, Compound governance documentation, and
+Stellar's upgrade guide, CAP-0046-03, and SEP-0049.
+
+**Why:** The README says the contract is "inspired by Compound Governor Bravo
+and OpenZeppelin's TimelockController" and has a short "Why Not" table against
+native Soroban upgrades, but there was no page explaining the trade-offs. The
+new page makes the differences explicit and keeps claims tied to the code and
+to cited external sources, as requested in issue #89.
+
+**BREAKING:** None. Documentation only; no contract source changes.
+
+**Test results:** `bash scripts/check_claims.sh` → OK (exit 0). Relative links
+in `docs/comparison.md` verified against the repository tree. No Rust code was
+changed, so no build or test run was required for this docs-only change.
+
+Closes #89

@@ -387,6 +387,20 @@ mod tests {
         );
     }
 
+    /// get_proposal with an unknown proposal ID returns ProposalNotFound.
+    ///
+    /// `get_proposal` delegates to `load_proposal`, which returns
+    /// `Error::ProposalNotFound` when `DataKey::Proposal(id)` is absent.
+    #[test]
+    fn test_get_proposal_unknown_id_fails() {
+        let (_, _, _, client) = setup();
+        let result = client.try_get_proposal(&999u64);
+        assert!(
+            matches!(result, Err(Ok(Error::ProposalNotFound))),
+            "get_proposal(999) on empty state must return ProposalNotFound, got: {result:?}"
+        );
+    }
+
     /// get_admin before initialization returns an error (NotInitialized).
     #[test]
     fn test_get_admin_not_initialized_fails() {

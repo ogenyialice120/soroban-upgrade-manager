@@ -308,7 +308,7 @@ mod tests {
                 topics.get(0).is_some_and(|v| v.shallow_eq(&want0))
                     && topics.get(1).is_some_and(|v| v.shallow_eq(&want1))
             })
-            .map(|(_, _, data)| (*data).clone())
+            .map(|(_, _, data)| data)
             .expect("missing event with expected topics")
     }
 
@@ -2204,6 +2204,33 @@ mod tests {
         let (event_old_admin, event_new_admin) =
             <(Address, Address)>::try_from_val(&env, &data).unwrap();
         assert_eq!((event_old_admin, event_new_admin), (old_admin, new_admin));
+    }
+
+    /// Verify propose_upgrade emits a proposal_created event with the exact
+    /// (id, proposer, target, new_wasm_hash) payload.
+    #[test]
+    fn test_event_proposal_created_data() {
+        let (env, _admin, _cid, client) = setup();
+        let proposer = Address::generate(&env);
+        let target = Address::generate(&env);
+        let new_wasm_hash = BytesN::from_array(&env, &[0x42u8; 32]);
+
+        let id = client.propose_upgrade(
+            &proposer,
+            &target,
+            &new_wasm_hash,
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+
+        let data = event_data(&env, symbol_short!("proposal"), symbol_short!("created"));
+        let (event_id, event_proposer, event_target, event_wasm_hash) =
+            <(u64, Address, Address, BytesN<32>)>::try_from_val(&env, &data).unwrap();
+        assert_eq!(event_id, id);
+        assert_eq!(event_proposer, proposer);
+        assert_eq!(event_target, target);
+        assert_eq!(event_wasm_hash, new_wasm_hash);
     }
 
     // -----------------------------------------------------------------------

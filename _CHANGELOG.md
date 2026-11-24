@@ -1174,8 +1174,9 @@ Closes #51
 ### Changes
 
 **contracts/upgrade-manager/src/test.rs**
-- Added `test_event_vote_cast_data`: casts a YES vote and a NO vote from two distinct voters on the same proposal, filters `env.events().all()` for `("vote", "cast")` events, decodes each event payload as `(u64, Address, bool)` via `TryFromVal`, and individually asserts `proposal_id`, `voter`, and `approve` (`true` for the first event, `false` for the second).
+- Added `test_event_proposal_created_data`: calls `propose_upgrade` with distinct `proposer`, `target`, and non-zero `new_wasm_hash`, locates the `("proposal", "created")` event via `event_data`, decodes its `(u64, Address, Address, BytesN<32>)` payload with `TryFromVal`, and asserts each field matches the values passed to `propose_upgrade`.
+- Fixed a compile error in the existing `event_data` helper (`(*data).clone()` → `data`, since `soroban_sdk::Val` is yielded by value from `env.events().all().iter()`).
 
-**Why:** The existing `test_event_vote_cast` test only verified that at least one `("vote", "cast")` event was emitted via `count_events(...) >= 1`, without checking the event payload. A regression emitting the wrong proposal ID, voter address, or approve boolean would not have been caught.
+**Why:** `test_event_proposal_created` only checked that at least one event with topics `("proposal", "created")` was emitted, without verifying the payload tuple `(id, proposer, target, new_wasm_hash)`. A silent regression in the event data would go undetected.
 
-**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean.
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `test::tests::test_event_proposal_created_data` passes (`120 passed` in `soroban-upgrade-manager`).

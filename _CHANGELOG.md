@@ -1136,3 +1136,18 @@ Closes #71
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes.
 
 Closes #65
+
+---
+
+## 2026-11-24 — test/get-proposal-unknown-id-57
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_get_proposal_unknown_id_fails`: initializes the contract via `setup()` with no proposals created, calls `client.try_get_proposal(&999u64)`, and asserts the result matches `Err(Ok(Error::ProposalNotFound))`.
+
+**Why:** `get_proposal` delegates to `load_proposal` in `governance.rs`, which returns `Error::ProposalNotFound` when `DataKey::Proposal(id)` is absent. Previously only `get_proposal(0)` (empty state) and `vote` on ID `999` were tested; this directly verifies `get_proposal` returns `Error::ProposalNotFound` for an arbitrary unknown ID.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 125 passed (115 in `soroban-upgrade-manager`), 0 failed; `wasm32v1-none` release build clean; `scripts/check_claims.sh` passed; fixture `SHA256SUMS` OK.
+
+Closes #57

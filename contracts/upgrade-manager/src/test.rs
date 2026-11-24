@@ -413,6 +413,20 @@ mod tests {
         );
     }
 
+    /// get_proposal with an unknown proposal ID returns ProposalNotFound.
+    ///
+    /// `get_proposal` delegates to `load_proposal`, which returns
+    /// `Error::ProposalNotFound` when `DataKey::Proposal(id)` is absent.
+    #[test]
+    fn test_get_proposal_unknown_id_fails() {
+        let (_, _, _, client) = setup();
+        let result = client.try_get_proposal(&999u64);
+        assert!(
+            matches!(result, Err(Ok(Error::ProposalNotFound))),
+            "get_proposal(999) on empty state must return ProposalNotFound, got: {result:?}"
+        );
+    }
+
     /// get_admin before initialization returns an error (NotInitialized).
     #[test]
     fn test_get_admin_not_initialized_fails() {
@@ -1189,6 +1203,79 @@ mod tests {
                 client.finalize(&id),
                 ProposalStatus::Defeated,
                 "2 YES + 1 NO with threshold=100 must be Defeated"
+            );
+        }
+    }
+
+    /// With approval_threshold_pct = 1 (the minimum valid threshold), a single
+    /// YES vote passes once quorum is met, while 0 YES votes is still Defeated.
+    ///
+    /// `finalize_voting` checks `(yes_votes * 100) >= (total_votes * threshold)`.
+    /// With threshold = 1 and quorum = 3:
+    /// - 1 YES + 2 NO → 100 >= 3 → Queued
+    /// - 0 YES + 3 NO → 0 >= 3 is false → Defeated
+    #[test]
+    fn test_threshold_1_passes_with_any_yes() {
+        // --- Proposal A: 1 YES, 2 NO → must pass (Queued) ---
+        {
+            let env = Env::default();
+            env.mock_all_auths();
+            let cid = env.register(UpgradeManager, ());
+            let client = UpgradeManagerClient::new(&env, &cid);
+            let admin = Address::generate(&env);
+            client.initialize(&admin, &100u32, &100u32, &3u32, &1u32, &0u32);
+
+            let target = Address::generate(&env);
+            let id = client.propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "threshold 1 pass"),
+                &desc(&env, "threshold 1 with 1 YES and 2 NO"),
+                &zero_hash(&env),
+            );
+            client.vote(&Address::generate(&env), &id, &true);
+            for _ in 0..2 {
+                client.vote(&Address::generate(&env), &id, &false);
+            }
+            advance_past_voting(&env, &cid, id);
+            assert_eq!(
+                client.finalize(&id),
+                ProposalStatus::Queued,
+                "1 YES + 2 NO with threshold=1 must be Queued"
+            );
+            let proposal = client.get_proposal(&id);
+            assert_eq!(proposal.status, ProposalStatus::Queued);
+            assert_eq!(proposal.yes_votes, 1);
+            assert_eq!(proposal.no_votes, 2);
+        }
+
+        // --- Proposal B: 0 YES, 3 NO → must fail (Defeated) ---
+        {
+            let env = Env::default();
+            env.mock_all_auths();
+            let cid = env.register(UpgradeManager, ());
+            let client = UpgradeManagerClient::new(&env, &cid);
+            let admin = Address::generate(&env);
+            client.initialize(&admin, &100u32, &100u32, &3u32, &1u32, &0u32);
+
+            let target = Address::generate(&env);
+            let id = client.propose_upgrade(
+                &admin,
+                &target,
+                &zero_hash(&env),
+                &title(&env, "threshold 1 zero yes"),
+                &desc(&env, "threshold 1 with 0 YES and 3 NO"),
+                &zero_hash(&env),
+            );
+            for _ in 0..3 {
+                client.vote(&Address::generate(&env), &id, &false);
+            }
+            advance_past_voting(&env, &cid, id);
+            assert_eq!(
+                client.finalize(&id),
+                ProposalStatus::Defeated,
+                "0 YES + 3 NO with threshold=1 must be Defeated"
             );
         }
     }

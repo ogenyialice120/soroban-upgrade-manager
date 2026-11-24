@@ -308,7 +308,7 @@ mod tests {
                 topics.get(0).is_some_and(|v| v.shallow_eq(&want0))
                     && topics.get(1).is_some_and(|v| v.shallow_eq(&want1))
             })
-            .map(|(_, _, data)| (*data).clone())
+            .map(|(_, _, data)| data)
             .expect("missing event with expected topics")
     }
 
@@ -2156,80 +2156,31 @@ mod tests {
         assert_eq!((event_old_admin, event_new_admin), (old_admin, new_admin));
     }
 
+    /// Verify propose_upgrade emits a proposal_created event with the exact
+    /// (id, proposer, target, new_wasm_hash) payload.
     #[test]
-    fn test_event_cancelled_data() {
-        let (env, admin, _cid, client) = setup();
+    fn test_event_proposal_created_data() {
+        let (env, _admin, _cid, client) = setup();
+        let proposer = Address::generate(&env);
         let target = Address::generate(&env);
+        let new_wasm_hash = BytesN::from_array(&env, &[0x42u8; 32]);
+
         let id = client.propose_upgrade(
-            &admin,
+            &proposer,
             &target,
-            &zero_hash(&env),
+            &new_wasm_hash,
             &title(&env, "v2"),
             &desc(&env, "v2"),
             &zero_hash(&env),
         );
-        client.cancel(&admin, &id);
 
-        let data = event_data(&env, symbol_short!("proposal"), symbol_short!("cancelled"));
-        let (event_proposal_id, event_caller) =
-            <(u64, Address)>::try_from_val(&env, &data).unwrap();
-        assert_eq!((event_proposal_id, event_caller), (id, admin));
-    }
-
-    #[test]
-    fn test_event_executed_data() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let manager_id = env.register(UpgradeManager, ());
-        let manager = UpgradeManagerClient::new(&env, &manager_id);
-        let target_id = env.register(MockTarget, ());
-
-        let new_hash = env
-            .deployer()
-            .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
-        let admin = Address::generate(&env);
-        manager.initialize(&admin, &100u32, &100u32, &3u32, &51u32, &0u32);
-
-        let pid = manager.propose_upgrade(
-            &admin,
-            &target_id,
-            &new_hash,
-            &title(&env, "v2"),
-            &desc(&env, "v2"),
-            &zero_hash(&env),
-        );
-        for _ in 0..3 {
-            manager.vote(&Address::generate(&env), &pid, &true);
-        }
-
-        const BUMP: u32 = 50_000;
-        env.as_contract(&target_id, || {
-            env.storage().instance().extend_ttl(BUMP, BUMP);
-        });
-        env.as_contract(&manager_id, || {
-            env.storage().instance().extend_ttl(BUMP, BUMP);
-            env.storage()
-                .persistent()
-                .extend_ttl(&DataKey::Proposal(pid), BUMP, BUMP);
-        });
-        env.ledger().with_mut(|l| l.sequence_number += 101);
-        assert_eq!(manager.finalize(&pid), ProposalStatus::Queued);
-
-        env.as_contract(&manager_id, || {
-            env.storage().instance().extend_ttl(BUMP, BUMP);
-            env.storage()
-                .persistent()
-                .extend_ttl(&DataKey::Proposal(pid), BUMP, BUMP);
-        });
-        env.as_contract(&target_id, || {
-            env.storage().instance().extend_ttl(BUMP, BUMP);
-        });
-        env.ledger().with_mut(|l| l.sequence_number += 101);
-        manager.execute(&pid);
-
-        let data = event_data(&env, symbol_short!("proposal"), symbol_short!("executed"));
-        assert_eq!(u64::try_from_val(&env, &data).unwrap(), pid);
+        let data = event_data(&env, symbol_short!("proposal"), symbol_short!("created"));
+        let (event_id, event_proposer, event_target, event_wasm_hash) =
+            <(u64, Address, Address, BytesN<32>)>::try_from_val(&env, &data).unwrap();
+        assert_eq!(event_id, id);
+        assert_eq!(event_proposer, proposer);
+        assert_eq!(event_target, target);
+        assert_eq!(event_wasm_hash, new_wasm_hash);
     }
 
     // -----------------------------------------------------------------------

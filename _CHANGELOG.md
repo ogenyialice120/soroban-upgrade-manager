@@ -1151,3 +1151,17 @@ Closes #65
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 125 passed (115 in `soroban-upgrade-manager`), 0 failed; `wasm32v1-none` release build clean; `scripts/check_claims.sh` passed; fixture `SHA256SUMS` OK.
 
 Closes #57
+
+## 2026-11-24 — assert (Issue #48)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_event_config_updated_data` to decode and assert the caller address in the `config_updated` event data.
+- Added `test_event_admin_transferred_data` to decode and assert both addresses in the `admin_transferred` event data.
+
+**Why:** The existing event tests checked only topics, so regressions in either event payload could go undetected.
+
+**Test results:** `git diff --check` passed. `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` could not run because `cargo` is not installed (`cargo: command not found`).
+
+Closes #48

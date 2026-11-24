@@ -1136,3 +1136,17 @@ Closes #71
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes.
 
 Closes #65
+
+## 2026-11-24 — test/execute-with-panicking-target-55
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `panicking_target_contract` sub-module: a helper contract (`PanickingTarget`) exposing `version()` and an `upgrade(BytesN<32>)` function that unconditionally panics, isolated in its own `#[cfg(test)]` module to avoid `#[contractimpl]` symbol collisions.
+- Added `test_execute_with_panicking_target`: runs the full governance flow (initialize → propose → vote → advance past voting → finalize → advance past timelock → verify target liveness → `try_execute`) against `PanickingTarget`, asserts `try_execute` fails with `Err(Err(InvokeError::Abort))`, and asserts the proposal remains `ProposalStatus::Queued` with its vote counts intact.
+
+**Why:** `execute()` follows checks-effects-interactions by persisting `ProposalStatus::Executed` before invoking the target's `upgrade()` function, relying on Soroban transaction atomicity to roll back state on failure. Existing tests covered a target missing `upgrade()` (`test_failed_upgrade_leaves_proposal_queued`) and a target returning `Err` (`test_execute_with_error_returning_target`), but no test exercised a panic/trap inside `upgrade()`. Adding `test_execute_with_panicking_target` closes that coverage gap without modifying contract source code.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo build --workspace` clean; `cargo test --workspace` → 125 passed (115 in `soroban-upgrade-manager`), 0 failed; `cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml` clean; `bash scripts/check_claims.sh` → OK; `sha256sum -c SHA256SUMS` → OK.
+
+Closes #55

@@ -1151,3 +1151,19 @@ Closes #65
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 125 passed (115 in `soroban-upgrade-manager`), 0 failed; `wasm32v1-none` release build clean; `scripts/check_claims.sh` passed; fixture `SHA256SUMS` OK.
 
 Closes #57
+
+---
+
+## 2026-11-24 — mr-codastic/52-test-many-voters-on-a-single-proposal-10-voters (Issue #52)
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_many_voters_accumulate_correctly`: initializes a fresh env with `quorum=10, threshold=60`, casts 12 YES and 8 NO votes from 20 unique addresses, asserts `yes_votes == 12` and `no_votes == 8`, advances past voting and asserts `finalize` returns `Queued` (12/20 = 60% >= 60%, 20 >= quorum 10).
+- Added `test_each_voter_recorded_independently`: voter A votes YES; a second vote from A returns `AlreadyVoted`; voter B (who has not voted) can still vote NO without error and is then also rejected with `AlreadyVoted` on a repeat; asserts `yes_votes == 1`, `no_votes == 1`.
+
+**Why:** Every existing vote test used three or fewer voters, so a key collision in the `DataKey::Vote(proposal_id, voter)` record/has-voted logic or an accumulation bug in the tallies would not have been caught. `governance.rs` and existing tests are unchanged. Note: the issue text says B votes YES and then "can still vote NO", which would itself be a double vote; the test instead has B vote NO as its first vote, which verifies the intended per-voter independence.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 119 passed in `soroban-upgrade-manager`, 0 failed, both new tests present.
+
+Closes #52

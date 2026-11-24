@@ -796,6 +796,77 @@ mod tests {
         );
     }
 
+    /// 12 YES + 8 NO from 20 unique voters: tallies accumulate exactly and the
+    /// proposal passes at the threshold boundary (12/20 = 60%) with quorum 10.
+    #[test]
+    fn test_many_voters_accumulate_correctly() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+        client.initialize(&admin, &100u32, &17_280u32, &10u32, &60u32, &0u32);
+
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+
+        for _ in 0..12 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        for _ in 0..8 {
+            client.vote(&Address::generate(&env), &id, &false);
+        }
+
+        let p = client.get_proposal(&id);
+        assert_eq!(p.yes_votes, 12);
+        assert_eq!(p.no_votes, 8);
+
+        advance_past_voting(&env, &cid, id);
+        assert_eq!(client.finalize(&id), ProposalStatus::Queued);
+    }
+
+    /// Each (proposal, voter) pair has its own Vote key: a repeat vote from A is
+    /// rejected while B's independent record is unaffected.
+    #[test]
+    fn test_each_voter_recorded_independently() {
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        let voter_a = Address::generate(&env);
+        let voter_b = Address::generate(&env);
+
+        client.vote(&voter_a, &id, &true);
+        assert_eq!(
+            client.try_vote(&voter_a, &id, &true),
+            Err(Ok(Error::AlreadyVoted))
+        );
+
+        // A's recorded vote must not block B (B has not voted yet).
+        assert!(client.try_vote(&voter_b, &id, &false).is_ok());
+        assert_eq!(
+            client.try_vote(&voter_b, &id, &false),
+            Err(Ok(Error::AlreadyVoted))
+        );
+
+        let p = client.get_proposal(&id);
+        assert_eq!(p.yes_votes, 1);
+        assert_eq!(p.no_votes, 1);
+    }
+
     #[test]
     fn test_vote_on_unknown_proposal_fails() {
         let (env, _admin, _cid, client) = setup();

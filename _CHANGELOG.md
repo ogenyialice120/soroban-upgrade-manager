@@ -1166,3 +1166,16 @@ Closes #57
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 128 passed (118 in `soroban-upgrade-manager`), 0 failed; `scripts/check_claims.sh` passed. From the workspace root, `cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml` succeeded. From `contracts/upgrade-manager/tests/fixtures/`, `shasum -a 256 -c SHA256SUMS` verified both `target_v1.wasm` and `target_v2.wasm`.
 
 Closes #51
+
+---
+
+## 2026-11-24 — test/quorum-threshold-boundary-cases
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_quorum_and_threshold_boundary_cases`: a table-driven test over 8 `(yes, no, quorum, threshold_pct, expected_pass)` boundary rows covering exact quorum + exact threshold pass, exact quorum with 50% threshold pass, one vote short of quorum (`quorum - 1`) defeat, exact threshold boundary (`yes * 100 == total * threshold_pct`) pass, one below threshold boundary (`yes * 100 == total * threshold_pct - 1`) defeat, `quorum=1, threshold=100` with 1 yes / 0 no (pass) and 0 yes / 1 no (defeat), and `quorum=2, threshold=50` with 1 yes / 1 no (pass). Each row initializes a fresh `Env`, proposes, votes, advances past voting, finalizes, and asserts `ProposalStatus::Queued` or `ProposalStatus::Defeated`.
+
+**Why:** `finalize_voting` in `governance.rs` checks quorum (`total_votes >= snap_quorum`) and threshold (`yes_votes * 100 >= total_votes * snap_threshold_pct`) using integer arithmetic. Previously only three ad-hoc finalize tests existed, leaving exact boundary and off-by-one rounding cases uncovered. No contract logic or existing tests were modified.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test -p soroban-upgrade-manager --lib test_quorum_and_threshold_boundary_cases` → 1 passed, 0 failed.

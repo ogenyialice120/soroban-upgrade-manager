@@ -1136,3 +1136,18 @@ Closes #71
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` passes.
 
 Closes #65
+
+---
+
+## 2026-11-24 — test/threshold-1-passes-with-any-yes-63
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_threshold_1_passes_with_any_yes`: initializes governance with `approval_threshold_pct = 1`, `quorum = 3`, `voting_period = 100`, `timelock_delay = 100`, and `proposal_min_interval = 0`. Verifies Proposal A (1 YES + 2 NO, meeting quorum with 33% >= 1%) finalizes to `ProposalStatus::Queued` with persisted vote counts `yes_votes == 1` and `no_votes == 2`, and Proposal B (0 YES + 3 NO) finalizes to `ProposalStatus::Defeated`.
+
+**Why:** `finalize_voting` in `governance.rs` checks `(yes_votes * 100) >= (total_votes * threshold_pct)`. While invalid thresholds (`0` and `101`) and the maximum valid threshold (`100`) were tested, no test covered the minimum valid boundary `approval_threshold_pct = 1`.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 125 passed (115 in `soroban-upgrade-manager`), 0 failed; `wasm32v1-none` release build clean; `scripts/check_claims.sh` passed; fixture `SHA256SUMS` OK.
+
+Closes #63

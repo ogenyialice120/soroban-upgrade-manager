@@ -130,6 +130,31 @@ mod error_target_contract {
     }
 }
 
+/// A target contract whose upgrade() PANICS unconditionally.
+/// Exercises the panic/trap rollback path of the cross-contract call in
+/// `invoke_upgrade`: the host catches the panic, aborts the transaction,
+/// and reverts the manager's pre-call `proposal.status = Executed` write.
+#[cfg(test)]
+mod panicking_target_contract {
+    use soroban_sdk::{contract, contractimpl, BytesN, Env};
+
+    #[contract]
+    pub struct PanickingTarget;
+
+    #[contractimpl]
+    impl PanickingTarget {
+        pub fn version(_env: Env) -> u32 {
+            1
+        }
+
+        /// Has the expected `upgrade(BytesN<32>)` signature, but panics
+        /// before performing `update_current_contract_wasm`.
+        pub fn upgrade(_env: Env, _new_wasm_hash: BytesN<32>) {
+            panic!("simulated panic inside target upgrade");
+        }
+    }
+}
+
 /// A target contract whose upgrade() performs several storage reads and writes
 /// before calling update_current_contract_wasm, simulating a migration that
 /// consumes a meaningful portion of the compute budget.
@@ -188,7 +213,7 @@ mod tests {
     use soroban_sdk::{
         symbol_short,
         testutils::{Address as _, Events, Ledger},
-        Address, BytesN, Env, String, Symbol,
+        Address, BytesN, Env, InvokeError, String, Symbol,
     };
     use triple_target::{TripleTarget, TripleTargetClient};
 
@@ -199,6 +224,7 @@ mod tests {
     use super::fixture_target_contract::{FixtureTarget, FixtureTargetClient};
     use super::mock_target_contract::MockTarget;
     use super::no_upgrade_contract::NoUpgradeFn;
+    use super::panicking_target_contract::{PanickingTarget, PanickingTargetClient};
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -2580,6 +2606,86 @@ mod tests {
             ProposalStatus::Queued,
             "proposal must remain Queued after a target upgrade error"
         );
+    }
+
+    /// Execute against a target whose upgrade() PANICS inside the call.
+    ///
+    /// Distinct from `test_failed_upgrade_leaves_proposal_queued` (target has
+    /// no upgrade function) and `test_execute_with_error_returning_target`
+    /// (target returns `Err`): here the target contract's `upgrade()` panics.
+    /// The Soroban host aborts the cross-contract call (`InvokeError::Abort`),
+    /// rolling back the entire `execute()` transaction — including the pre-call
+    /// `proposal.status = Executed` write — so the proposal remains `Queued`.
+    #[test]
+    fn test_execute_with_panicking_target() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let manager_id = env.register(UpgradeManager, ());
+        let manager = UpgradeManagerClient::new(&env, &manager_id);
+        let admin = Address::generate(&env);
+        // Short voting period and timelock to minimize ledger advances.
+        manager.initialize(&admin, &100u32, &100u32, &1u32, &51u32, &0u32);
+
+        let panicking_target = env.register(PanickingTarget, ());
+        let target_client = PanickingTargetClient::new(&env, &panicking_target);
+
+        // Any 32-byte hash; the target panics before swapping WASM.
+        let new_wasm_hash = zero_hash(&env);
+
+        let id = manager.propose_upgrade(
+            &admin,
+            &panicking_target,
+            &new_wasm_hash,
+            &title(&env, "upgrade a panicking target"),
+            &desc(&env, "target upgrade() panics unconditionally"),
+            &zero_hash(&env),
+        );
+        // Quorum is 1: a single YES vote passes the proposal.
+        manager.vote(&Address::generate(&env), &id, &true);
+
+        const BUMP: u32 = 50_000;
+        let extend_ttls = || {
+            env.as_contract(&manager_id, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&DataKey::Proposal(id), BUMP, BUMP);
+            });
+            env.as_contract(&panicking_target, || {
+                env.storage().instance().extend_ttl(BUMP, BUMP);
+            });
+        };
+
+        // Close voting and queue the proposal.
+        extend_ttls();
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+        assert_eq!(manager.finalize(&id), ProposalStatus::Queued);
+
+        // Pass the timelock.
+        extend_ttls();
+        env.ledger().with_mut(|l| l.sequence_number += 101);
+
+        // Confirm the target contract is still live before calling execute().
+        assert_eq!(target_client.version(), 1);
+
+        // The target's upgrade() panics → host aborts the cross-contract call.
+        let result = manager.try_execute(&id);
+        assert_eq!(
+            result,
+            Err(Err(InvokeError::Abort)),
+            "execute against a panicking target must fail with a host abort"
+        );
+
+        // Transaction reverted → the premature Executed write was undone and
+        // the proposal remains Queued with its vote counts intact.
+        let proposal = manager.get_proposal(&id);
+        assert_eq!(
+            proposal.status,
+            ProposalStatus::Queued,
+            "proposal must remain Queued after a target upgrade panic"
+        );
+        assert_eq!(proposal.yes_votes, 1);
+        assert_eq!(proposal.no_votes, 0);
     }
 
     /// Execute succeeds when the target's upgrade() does meaningful work

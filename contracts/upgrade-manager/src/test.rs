@@ -2071,6 +2071,56 @@ mod tests {
         );
     }
 
+    /// Verify vote emits vote_cast events with accurate (proposal_id, voter, approve) data.
+    #[test]
+    fn test_event_vote_cast_data() {
+        use soroban_sdk::{IntoVal, TryFromVal};
+
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+
+        let voter_yes = Address::generate(&env);
+        let voter_no = Address::generate(&env);
+        client.vote(&voter_yes, &id, &true);
+        client.vote(&voter_no, &id, &false);
+
+        let want0: soroban_sdk::Val = symbol_short!("vote").into_val(&env);
+        let want1: soroban_sdk::Val = symbol_short!("cast").into_val(&env);
+        let vote_events: std::vec::Vec<(u64, Address, bool)> = env
+            .events()
+            .all()
+            .iter()
+            .filter(|(_, topics, _)| {
+                topics.get(0).is_some_and(|v| v.shallow_eq(&want0))
+                    && topics.get(1).is_some_and(|v| v.shallow_eq(&want1))
+            })
+            .map(|(_, _, data)| {
+                <(u64, Address, bool)>::try_from_val(&env, &data)
+                    .expect("vote_cast event data must decode as (u64, Address, bool)")
+            })
+            .collect();
+
+        assert_eq!(vote_events.len(), 2, "expected exactly 2 vote_cast events");
+
+        let (first_id, first_voter, first_approve) = &vote_events[0];
+        assert_eq!(*first_id, id, "first vote_cast proposal_id mismatch");
+        assert_eq!(*first_voter, voter_yes, "first vote_cast voter mismatch");
+        assert!(*first_approve, "first vote_cast approve must be true");
+
+        let (second_id, second_voter, second_approve) = &vote_events[1];
+        assert_eq!(*second_id, id, "second vote_cast proposal_id mismatch");
+        assert_eq!(*second_voter, voter_no, "second vote_cast voter mismatch");
+        assert!(!*second_approve, "second vote_cast approve must be false");
+    }
+
     /// Verify finalize emits a finalized event.
     #[test]
     fn test_event_finalized() {
@@ -2154,6 +2204,33 @@ mod tests {
         let (event_old_admin, event_new_admin) =
             <(Address, Address)>::try_from_val(&env, &data).unwrap();
         assert_eq!((event_old_admin, event_new_admin), (old_admin, new_admin));
+    }
+
+    /// Verify propose_upgrade emits a proposal_created event with the exact
+    /// (id, proposer, target, new_wasm_hash) payload.
+    #[test]
+    fn test_event_proposal_created_data() {
+        let (env, _admin, _cid, client) = setup();
+        let proposer = Address::generate(&env);
+        let target = Address::generate(&env);
+        let new_wasm_hash = BytesN::from_array(&env, &[0x42u8; 32]);
+
+        let id = client.propose_upgrade(
+            &proposer,
+            &target,
+            &new_wasm_hash,
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+
+        let data = event_data(&env, symbol_short!("proposal"), symbol_short!("created"));
+        let (event_id, event_proposer, event_target, event_wasm_hash) =
+            <(u64, Address, Address, BytesN<32>)>::try_from_val(&env, &data).unwrap();
+        assert_eq!(event_id, id);
+        assert_eq!(event_proposer, proposer);
+        assert_eq!(event_target, target);
+        assert_eq!(event_wasm_hash, new_wasm_hash);
     }
 
     // -----------------------------------------------------------------------

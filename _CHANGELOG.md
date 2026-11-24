@@ -1166,3 +1166,16 @@ Closes #57
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo test --workspace` → 128 passed (118 in `soroban-upgrade-manager`), 0 failed; `scripts/check_claims.sh` passed. From the workspace root, `cargo build --target wasm32v1-none --release --manifest-path contracts/upgrade-manager/Cargo.toml` succeeded. From `contracts/upgrade-manager/tests/fixtures/`, `shasum -a 256 -c SHA256SUMS` verified both `target_v1.wasm` and `target_v2.wasm`.
 
 Closes #51
+
+---
+
+## 2026-11-24 — test/event-vote-cast-data
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_event_vote_cast_data`: casts a YES vote and a NO vote from two distinct voters on the same proposal, filters `env.events().all()` for `("vote", "cast")` events, decodes each event payload as `(u64, Address, bool)` via `TryFromVal`, and individually asserts `proposal_id`, `voter`, and `approve` (`true` for the first event, `false` for the second).
+
+**Why:** The existing `test_event_vote_cast` test only verified that at least one `("vote", "cast")` event was emitted via `count_events(...) >= 1`, without checking the event payload. A regression emitting the wrong proposal ID, voter address, or approve boolean would not have been caught.
+
+**Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean.

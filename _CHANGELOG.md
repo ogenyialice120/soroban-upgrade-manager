@@ -1183,6 +1183,20 @@ Closes #51
 
 ---
 
+## 2026-11-25 — test/event-finalized-data
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_event_finalized_queued_data`: creates a proposal, casts 3 yes votes, advances past voting, calls `finalize`, decodes the `("proposal", "finalized")` event payload via `event_data` and `TryFromVal`, and asserts it equals `(0u64, ProposalStatus::Queued)`.
+- Added `test_event_finalized_defeated_data`: creates a proposal, casts 3 no votes, advances past voting, calls `finalize`, decodes the `("proposal", "finalized")` event payload via `event_data` and `TryFromVal`, and asserts it equals `(0u64, ProposalStatus::Defeated)`.
+
+**Why:** `test_event_finalized` only checked that at least one `("proposal", "finalized")` event was emitted without verifying the `(proposal_id, status)` payload. These tests verify both passing (`Queued`) and failing (`Defeated`) payload data.
+
+**Test results:** `cargo fmt --all -- --check` clean (local `cargo clippy` / `cargo test` blocked by offline DNS to `static.crates.io`; verified via CI).
+
+---
+
 ## 2026-11-25 — test/minimum-voting-period-and-timelock
 
 ### Changes

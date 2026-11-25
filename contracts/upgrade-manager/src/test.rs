@@ -4187,4 +4187,69 @@ mod tests {
             assert_eq!(client.get_proposal(&id).status, expected_status);
         }
     }
+
+    /// Full governance lifecycle with minimum valid timing config:
+    /// `voting_period = 1`, `timelock_delay = 1`, `quorum = 1`, `approval_threshold_pct = 51`.
+    /// Exercises every boundary (`<=`, `>`, `<`, `>=`) at minimum ledger offsets.
+    #[test]
+    fn test_minimum_voting_period_and_timelock_full_lifecycle() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+
+        // Initialize with minimum valid config: voting_period=1, timelock_delay=1, quorum=1, threshold=51
+        client.initialize(&admin, &1u32, &1u32, &1u32, &51u32, &0u32);
+
+        let target = env.register(MockTarget, ());
+        let new_hash = env
+            .deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
+
+        // Create proposal at ledger 0 -> created_at = 0, voting_ends_at = 1
+        assert_eq!(env.ledger().sequence(), 0);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &new_hash,
+            &title(&env, "min-config"),
+            &desc(&env, "minimum voting_period=1 and timelock_delay=1"),
+            &zero_hash(&env),
+        );
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.created_at, 0);
+        assert_eq!(proposal.voting_ends_at, 1);
+        assert_eq!(proposal.status, ProposalStatus::Active);
+
+        // Vote YES at ledger 0 (before voting_ends_at=1)
+        let voter1 = Address::generate(&env);
+        client.vote(&voter1, &id, &true);
+
+        // Advance ledger by 1 (now at ledger 1 == voting_ends_at); confirm vote still accepted
+        env.ledger().with_mut(|l| l.sequence_number += 1);
+        assert_eq!(env.ledger().sequence(), 1);
+        let voter2 = Address::generate(&env);
+        client.vote(&voter2, &id, &true);
+
+        // Advance ledger by 1 more (now at ledger 2 > voting_ends_at=1); finalize -> Queued, executable_at = 3
+        env.ledger().with_mut(|l| l.sequence_number += 1);
+        assert_eq!(env.ledger().sequence(), 2);
+        let status = client.finalize(&id);
+        assert_eq!(status, ProposalStatus::Queued);
+
+        let queued = client.get_proposal(&id);
+        assert_eq!(queued.status, ProposalStatus::Queued);
+        assert_eq!(queued.executable_at, 3);
+
+        // Confirm execute at ledger 2 fails with TimelockNotExpired
+        assert_eq!(client.try_execute(&id), Err(Ok(Error::TimelockNotExpired)));
+
+        // Advance to ledger 3 (== executable_at); execute -> succeeds
+        env.ledger().with_mut(|l| l.sequence_number += 1);
+        assert_eq!(env.ledger().sequence(), 3);
+        client.execute(&id);
+
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Executed);
+    }
 }

@@ -1180,3 +1180,16 @@ Closes #51
 **Why:** `test_event_proposal_created` only checked that at least one event with topics `("proposal", "created")` was emitted, without verifying the payload tuple `(id, proposer, target, new_wasm_hash)`. A silent regression in the event data would go undetected.
 
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `test::tests::test_event_proposal_created_data` passes (`120 passed` in `soroban-upgrade-manager`).
+
+---
+
+## 2026-11-25 — test/minimum-voting-period-and-timelock
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_minimum_voting_period_and_timelock_full_lifecycle`: initializes with minimum valid timing config (`voting_period=1`, `timelock_delay=1`, `quorum=1`, `approval_threshold_pct=51`, `cooldown=0`), proposes an upgrade of `MockTarget` at ledger 0 (`created_at=0`, `voting_ends_at=1`), votes YES at ledger 0, advances to ledger 1 (`== voting_ends_at`) and confirms another YES vote is still accepted, advances to ledger 2 (`> voting_ends_at`) and finalizes to `Queued` (`executable_at=3`), confirms `execute` at ledger 2 fails with `Error::TimelockNotExpired`, and advances to ledger 3 (`== executable_at`) where `execute` succeeds and transitions the proposal to `Executed`.
+
+**Why:** The minimum legal values for `voting_period` and `timelock_delay` are both 1 ledger, and no test previously exercised the full propose → vote → finalize → execute lifecycle at these minimum boundaries. Off-by-one regressions in `<=`, `>`, `<`, or `>=` checks can manifest specifically at minimum values. No non-test code was changed.
+
+**Test results:** `cargo fmt --all -- --check` clean.

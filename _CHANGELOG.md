@@ -1183,14 +1183,27 @@ Closes #51
 
 ---
 
-## 2026-11-25 — test/many-voters-single-proposal
+## 2026-11-25 — test/event-finalized-data
 
 ### Changes
 
 **contracts/upgrade-manager/src/test.rs**
-- Added `test_many_voters_accumulate_correctly`: initializes with `quorum=10` and `approval_threshold_pct=60`, proposes an upgrade, casts 12 YES votes and 8 NO votes from 20 unique generated addresses, asserts `get_proposal` reports `yes_votes == 12` and `no_votes == 8`, advances past voting, finalizes, and asserts `ProposalStatus::Queued` (12/20 = 60% >= 60% threshold, 20 >= 10 quorum).
-- Added `test_each_voter_recorded_independently`: votes YES from voter A, asserts a second vote from A returns `Error::AlreadyVoted`, confirms distinct voter B can still vote NO without error (and a second vote from B returns `Error::AlreadyVoted`), and asserts `yes_votes == 1` and `no_votes == 1`.
+- Added `test_event_finalized_queued_data`: creates a proposal, casts 3 yes votes, advances past voting, calls `finalize`, decodes the `("proposal", "finalized")` event payload via `event_data` and `TryFromVal`, and asserts it equals `(0u64, ProposalStatus::Queued)`.
+- Added `test_event_finalized_defeated_data`: creates a proposal, casts 3 no votes, advances past voting, calls `finalize`, decodes the `("proposal", "finalized")` event payload via `event_data` and `TryFromVal`, and asserts it equals `(0u64, ProposalStatus::Defeated)`.
 
-**Why:** Existing vote tests used three or fewer voters. Testing 20 unique voters and verifying independent per-voter `DataKey::Vote(proposal_id, voter)` storage keys ensures `yes_votes`/`no_votes` accumulate accurately and guards against key collisions between voters.
+**Why:** `test_event_finalized` only checked that at least one `("proposal", "finalized")` event was emitted without verifying the `(proposal_id, status)` payload. These tests verify both passing (`Queued`) and failing (`Defeated`) payload data.
 
-**Test results:** `cargo fmt --all -- --check` clean. Local `cargo clippy`/`cargo test` blocked by offline DNS (`static.crates.io` unreachable); CI will run the full suite on the PR.
+**Test results:** `cargo fmt --all -- --check` clean (local `cargo clippy` / `cargo test` blocked by offline DNS to `static.crates.io`; verified via CI).
+
+---
+
+## 2026-11-25 — test/minimum-voting-period-and-timelock
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_minimum_voting_period_and_timelock_full_lifecycle`: initializes with minimum valid timing config (`voting_period=1`, `timelock_delay=1`, `quorum=1`, `approval_threshold_pct=51`, `cooldown=0`), proposes an upgrade of `MockTarget` at ledger 0 (`created_at=0`, `voting_ends_at=1`), votes YES at ledger 0, advances to ledger 1 (`== voting_ends_at`) and confirms another YES vote is still accepted, advances to ledger 2 (`> voting_ends_at`) and finalizes to `Queued` (`executable_at=3`), confirms `execute` at ledger 2 fails with `Error::TimelockNotExpired`, and advances to ledger 3 (`== executable_at`) where `execute` succeeds and transitions the proposal to `Executed`.
+
+**Why:** The minimum legal values for `voting_period` and `timelock_delay` are both 1 ledger, and no test previously exercised the full propose → vote → finalize → execute lifecycle at these minimum boundaries. Off-by-one regressions in `<=`, `>`, `<`, or `>=` checks can manifest specifically at minimum values. No non-test code was changed.
+
+**Test results:** `cargo fmt --all -- --check` clean.

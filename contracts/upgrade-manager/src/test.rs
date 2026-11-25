@@ -2145,6 +2145,54 @@ mod tests {
         );
     }
 
+    /// Verify finalize emits a finalized event with (0u64, ProposalStatus::Queued) when passing.
+    #[test]
+    fn test_event_finalized_queued_data() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        advance_past_voting(&env, &cid, id);
+        client.finalize(&id);
+
+        let data = event_data(&env, symbol_short!("proposal"), symbol_short!("finalized"));
+        let (event_id, event_status) = <(u64, ProposalStatus)>::try_from_val(&env, &data).unwrap();
+        assert_eq!((event_id, event_status), (0u64, ProposalStatus::Queued));
+    }
+
+    /// Verify finalize emits a finalized event with (0u64, ProposalStatus::Defeated) when failing.
+    #[test]
+    fn test_event_finalized_defeated_data() {
+        let (env, admin, cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "v2"),
+            &desc(&env, "v2"),
+            &zero_hash(&env),
+        );
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id, &false);
+        }
+        advance_past_voting(&env, &cid, id);
+        client.finalize(&id);
+
+        let data = event_data(&env, symbol_short!("proposal"), symbol_short!("finalized"));
+        let (event_id, event_status) = <(u64, ProposalStatus)>::try_from_val(&env, &data).unwrap();
+        assert_eq!((event_id, event_status), (0u64, ProposalStatus::Defeated));
+    }
+
     #[test]
     fn test_event_cancelled() {
         let (env, admin, _cid, client) = setup();
@@ -4186,5 +4234,146 @@ mod tests {
             );
             assert_eq!(client.get_proposal(&id).status, expected_status);
         }
+    }
+
+    /// Full governance lifecycle with minimum valid timing config:
+    /// `voting_period = 1`, `timelock_delay = 1`, `quorum = 1`, `approval_threshold_pct = 51`.
+    /// Exercises every boundary (`<=`, `>`, `<`, `>=`) at minimum ledger offsets.
+    #[test]
+    fn test_minimum_voting_period_and_timelock_full_lifecycle() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+
+        // Initialize with minimum valid config: voting_period=1, timelock_delay=1, quorum=1, threshold=51
+        client.initialize(&admin, &1u32, &1u32, &1u32, &51u32, &0u32);
+
+        let target = env.register(MockTarget, ());
+        let new_hash = env
+            .deployer()
+            .upload_contract_wasm(soroban_sdk::Bytes::new(&env));
+
+        // Create proposal at ledger 0 -> created_at = 0, voting_ends_at = 1
+        assert_eq!(env.ledger().sequence(), 0);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &new_hash,
+            &title(&env, "min-config"),
+            &desc(&env, "minimum voting_period=1 and timelock_delay=1"),
+            &zero_hash(&env),
+        );
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.created_at, 0);
+        assert_eq!(proposal.voting_ends_at, 1);
+        assert_eq!(proposal.status, ProposalStatus::Active);
+
+        // Vote YES at ledger 0 (before voting_ends_at=1)
+        let voter1 = Address::generate(&env);
+        client.vote(&voter1, &id, &true);
+
+        // Advance ledger by 1 (now at ledger 1 == voting_ends_at); confirm vote still accepted
+        env.ledger().with_mut(|l| l.sequence_number += 1);
+        assert_eq!(env.ledger().sequence(), 1);
+        let voter2 = Address::generate(&env);
+        client.vote(&voter2, &id, &true);
+
+        // Advance ledger by 1 more (now at ledger 2 > voting_ends_at=1); finalize -> Queued, executable_at = 3
+        env.ledger().with_mut(|l| l.sequence_number += 1);
+        assert_eq!(env.ledger().sequence(), 2);
+        let status = client.finalize(&id);
+        assert_eq!(status, ProposalStatus::Queued);
+
+        let queued = client.get_proposal(&id);
+        assert_eq!(queued.status, ProposalStatus::Queued);
+        assert_eq!(queued.executable_at, 3);
+
+        // Confirm execute at ledger 2 fails with TimelockNotExpired
+        assert_eq!(client.try_execute(&id), Err(Ok(Error::TimelockNotExpired)));
+
+        // Advance to ledger 3 (== executable_at); execute -> succeeds
+        env.ledger().with_mut(|l| l.sequence_number += 1);
+        assert_eq!(env.ledger().sequence(), 3);
+        client.execute(&id);
+
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Executed);
+    }
+
+    /// Many unique voters (12 YES, 8 NO) on a single proposal accumulate
+    /// `yes_votes` and `no_votes` accurately and finalize as `Queued` when
+    /// quorum (10) and approval threshold (60%) are satisfied (12/20 = 60%).
+    #[test]
+    fn test_many_voters_accumulate_correctly() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin, &100u32, &17_280u32, &10u32, &60u32, &0u32);
+
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "many-voters"),
+            &desc(&env, "test 20 unique voters on a single proposal"),
+            &zero_hash(&env),
+        );
+
+        for _ in 0..12 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        for _ in 0..8 {
+            client.vote(&Address::generate(&env), &id, &false);
+        }
+
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.yes_votes, 12);
+        assert_eq!(proposal.no_votes, 8);
+
+        advance_past_voting(&env, &cid, id);
+        let status = client.finalize(&id);
+        assert_eq!(status, ProposalStatus::Queued);
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Queued);
+    }
+
+    /// Each voter's `DataKey::Vote(proposal_id, voter)` entry is recorded
+    /// independently: after voter A votes YES, a second vote from A fails
+    /// with `AlreadyVoted`, while distinct voter B can still cast a NO vote.
+    #[test]
+    fn test_each_voter_recorded_independently() {
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "independent-voters"),
+            &desc(&env, "verify per-voter vote storage keys do not collide"),
+            &zero_hash(&env),
+        );
+
+        let voter_a = Address::generate(&env);
+        let voter_b = Address::generate(&env);
+
+        client.vote(&voter_a, &id, &true);
+        assert_eq!(
+            client.try_vote(&voter_a, &id, &true),
+            Err(Ok(Error::AlreadyVoted))
+        );
+
+        assert!(client.try_vote(&voter_b, &id, &false).is_ok());
+        assert_eq!(
+            client.try_vote(&voter_b, &id, &false),
+            Err(Ok(Error::AlreadyVoted))
+        );
+
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.yes_votes, 1);
+        assert_eq!(proposal.no_votes, 1);
     }
 }

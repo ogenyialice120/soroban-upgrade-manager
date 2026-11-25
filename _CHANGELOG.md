@@ -1180,3 +1180,17 @@ Closes #51
 **Why:** `test_event_proposal_created` only checked that at least one event with topics `("proposal", "created")` was emitted, without verifying the payload tuple `(id, proposer, target, new_wasm_hash)`. A silent regression in the event data would go undetected.
 
 **Test results:** `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `test::tests::test_event_proposal_created_data` passes (`120 passed` in `soroban-upgrade-manager`).
+
+---
+
+## 2026-11-25 — test/many-voters-single-proposal
+
+### Changes
+
+**contracts/upgrade-manager/src/test.rs**
+- Added `test_many_voters_accumulate_correctly`: initializes with `quorum=10` and `approval_threshold_pct=60`, proposes an upgrade, casts 12 YES votes and 8 NO votes from 20 unique generated addresses, asserts `get_proposal` reports `yes_votes == 12` and `no_votes == 8`, advances past voting, finalizes, and asserts `ProposalStatus::Queued` (12/20 = 60% >= 60% threshold, 20 >= 10 quorum).
+- Added `test_each_voter_recorded_independently`: votes YES from voter A, asserts a second vote from A returns `Error::AlreadyVoted`, confirms distinct voter B can still vote NO without error (and a second vote from B returns `Error::AlreadyVoted`), and asserts `yes_votes == 1` and `no_votes == 1`.
+
+**Why:** Existing vote tests used three or fewer voters. Testing 20 unique voters and verifying independent per-voter `DataKey::Vote(proposal_id, voter)` storage keys ensures `yes_votes`/`no_votes` accumulate accurately and guards against key collisions between voters.
+
+**Test results:** `cargo fmt --all -- --check` clean. Local `cargo clippy`/`cargo test` blocked by offline DNS (`static.crates.io` unreachable); CI will run the full suite on the PR.

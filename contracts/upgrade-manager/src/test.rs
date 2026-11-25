@@ -4187,4 +4187,80 @@ mod tests {
             assert_eq!(client.get_proposal(&id).status, expected_status);
         }
     }
+
+    /// Many unique voters (12 YES, 8 NO) on a single proposal accumulate
+    /// `yes_votes` and `no_votes` accurately and finalize as `Queued` when
+    /// quorum (10) and approval threshold (60%) are satisfied (12/20 = 60%).
+    #[test]
+    fn test_many_voters_accumulate_correctly() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let cid = env.register(UpgradeManager, ());
+        let client = UpgradeManagerClient::new(&env, &cid);
+        let admin = Address::generate(&env);
+
+        client.initialize(&admin, &100u32, &17_280u32, &10u32, &60u32, &0u32);
+
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "many-voters"),
+            &desc(&env, "test 20 unique voters on a single proposal"),
+            &zero_hash(&env),
+        );
+
+        for _ in 0..12 {
+            client.vote(&Address::generate(&env), &id, &true);
+        }
+        for _ in 0..8 {
+            client.vote(&Address::generate(&env), &id, &false);
+        }
+
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.yes_votes, 12);
+        assert_eq!(proposal.no_votes, 8);
+
+        advance_past_voting(&env, &cid, id);
+        let status = client.finalize(&id);
+        assert_eq!(status, ProposalStatus::Queued);
+        assert_eq!(client.get_proposal(&id).status, ProposalStatus::Queued);
+    }
+
+    /// Each voter's `DataKey::Vote(proposal_id, voter)` entry is recorded
+    /// independently: after voter A votes YES, a second vote from A fails
+    /// with `AlreadyVoted`, while distinct voter B can still cast a NO vote.
+    #[test]
+    fn test_each_voter_recorded_independently() {
+        let (env, admin, _cid, client) = setup();
+        let target = Address::generate(&env);
+        let id = client.propose_upgrade(
+            &admin,
+            &target,
+            &zero_hash(&env),
+            &title(&env, "independent-voters"),
+            &desc(&env, "verify per-voter vote storage keys do not collide"),
+            &zero_hash(&env),
+        );
+
+        let voter_a = Address::generate(&env);
+        let voter_b = Address::generate(&env);
+
+        client.vote(&voter_a, &id, &true);
+        assert_eq!(
+            client.try_vote(&voter_a, &id, &true),
+            Err(Ok(Error::AlreadyVoted))
+        );
+
+        assert!(client.try_vote(&voter_b, &id, &false).is_ok());
+        assert_eq!(
+            client.try_vote(&voter_b, &id, &false),
+            Err(Ok(Error::AlreadyVoted))
+        );
+
+        let proposal = client.get_proposal(&id);
+        assert_eq!(proposal.yes_votes, 1);
+        assert_eq!(proposal.no_votes, 1);
+    }
 }

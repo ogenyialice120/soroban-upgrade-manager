@@ -767,6 +767,84 @@ mod tests {
         assert_eq!(client.finalize(&id), ProposalStatus::Queued);
     }
 
+    /// Two proposals created under different configs coexist on the same live
+    /// ledger, and each is evaluated against its own snapshot at finalize time.
+    #[test]
+    fn test_interleaved_proposals_use_independent_config_snapshots() {
+        let (env, admin, cid, client) = setup();
+
+        // Proposal A under the original config: Q=3, T=51, VP=100, TL=17_280.
+        let id_a = client.propose_upgrade(
+            &admin,
+            &Address::generate(&env),
+            &zero_hash(&env),
+            &title(&env, "upgrade a"),
+            &desc(&env, "A: created under the original config"),
+            &zero_hash(&env),
+        );
+        let a = client.get_proposal(&id_a);
+        assert_eq!(a.snap_quorum, 3);
+        assert_eq!(a.snap_threshold_pct, 51);
+        assert_eq!(a.snap_voting_period, 100);
+        assert_eq!(a.snap_timelock_delay, 17_280);
+
+        // Change config to Q=1, T=66, VP=50, TL=100, then create proposal B.
+        client.update_config(&admin, &50u32, &100u32, &1u32, &66u32, &0u32);
+        let config = client.get_config();
+        assert_eq!(config.quorum, 1);
+        assert_eq!(config.approval_threshold_pct, 66);
+        assert_eq!(config.voting_period, 50);
+        assert_eq!(config.timelock_delay, 100);
+
+        let id_b = client.propose_upgrade(
+            &admin,
+            &Address::generate(&env),
+            &zero_hash(&env),
+            &title(&env, "upgrade b"),
+            &desc(&env, "B: created under the updated config"),
+            &zero_hash(&env),
+        );
+        let b = client.get_proposal(&id_b);
+        assert_eq!(b.snap_quorum, 1);
+        assert_eq!(b.snap_threshold_pct, 66);
+        assert_eq!(b.snap_voting_period, 50);
+        assert_eq!(b.snap_timelock_delay, 100);
+
+        // Both proposals are Active on the same ledger with different snapshots.
+        let a_live = client.get_proposal(&id_a);
+        let b_live = client.get_proposal(&id_b);
+        assert_eq!(a_live.status, ProposalStatus::Active);
+        assert_eq!(b_live.status, ProposalStatus::Active);
+        assert_eq!(a_live.snap_quorum, 3);
+        assert_eq!(b_live.snap_quorum, 1);
+
+        // 3 YES on A (meets A's quorum=3 / 100% >= 51%), 1 YES on B
+        // (meets B's quorum=1 / 100% >= 66%).
+        for _ in 0..3 {
+            client.vote(&Address::generate(&env), &id_a, &true);
+        }
+        client.vote(&Address::generate(&env), &id_b, &true);
+
+        // advance_past_voting advances 101 ledgers, past both voting periods
+        // (A ends at 100, B ends at 50) and bumps A's persistent TTL.
+        advance_past_voting(&env, &cid, id_a);
+        let finalize_ledger = env.ledger().sequence();
+
+        // Each proposal finalizes under its own snapshot, not the live config.
+        assert_eq!(client.finalize(&id_a), ProposalStatus::Queued);
+        assert_eq!(client.finalize(&id_b), ProposalStatus::Queued);
+
+        let a_final = client.get_proposal(&id_a);
+        let b_final = client.get_proposal(&id_b);
+        assert_eq!(a_final.status, ProposalStatus::Queued);
+        assert_eq!(b_final.status, ProposalStatus::Queued);
+        assert_eq!(a_final.snap_quorum, 3);
+        assert_eq!(b_final.snap_quorum, 1);
+        // Timelocks also come from each proposal's own snapshot.
+        assert_eq!(a_final.executable_at, finalize_ledger + 17_280);
+        assert_eq!(b_final.executable_at, finalize_ledger + 100);
+    }
+
     // -----------------------------------------------------------------------
     // vote
     // -----------------------------------------------------------------------
@@ -2071,7 +2149,8 @@ mod tests {
         );
     }
 
-    /// Verify vote emits vote_cast events with accurate (proposal_id, voter, approve) data.
+    /// Verify vote emits vote_cast events with accurate
+    /// (proposal_id, voter, approve, weight) data.
     #[test]
     fn test_event_vote_cast_data() {
         use soroban_sdk::{IntoVal, TryFromVal};
@@ -2089,36 +2168,44 @@ mod tests {
 
         let voter_yes = Address::generate(&env);
         let voter_no = Address::generate(&env);
-        client.vote(&voter_yes, &id, &true);
-        client.vote(&voter_no, &id, &false);
 
         let want0: soroban_sdk::Val = symbol_short!("vote").into_val(&env);
         let want1: soroban_sdk::Val = symbol_short!("cast").into_val(&env);
-        let vote_events: std::vec::Vec<(u64, Address, bool)> = env
-            .events()
-            .all()
-            .iter()
-            .filter(|(_, topics, _)| {
-                topics.get(0).is_some_and(|v| v.shallow_eq(&want0))
-                    && topics.get(1).is_some_and(|v| v.shallow_eq(&want1))
-            })
-            .map(|(_, _, data)| {
-                <(u64, Address, bool)>::try_from_val(&env, &data)
-                    .expect("vote_cast event data must decode as (u64, Address, bool)")
-            })
-            .collect();
+        // The test host reports only the events of the most recent top-level
+        // invocation, so collect after each vote instead of once at the end.
+        let collect_vote_events = || -> std::vec::Vec<(u64, Address, bool, u32)> {
+            env.events()
+                .all()
+                .iter()
+                .filter(|(_, topics, _)| {
+                    topics.get(0).is_some_and(|v| v.shallow_eq(&want0))
+                        && topics.get(1).is_some_and(|v| v.shallow_eq(&want1))
+                })
+                .map(|(_, _, data)| {
+                    <(u64, Address, bool, u32)>::try_from_val(&env, &data)
+                        .expect("vote_cast event data must decode as (u64, Address, bool, u32)")
+                })
+                .collect()
+        };
+
+        client.vote(&voter_yes, &id, &true);
+        let mut vote_events = collect_vote_events();
+        client.vote(&voter_no, &id, &false);
+        vote_events.extend(collect_vote_events());
 
         assert_eq!(vote_events.len(), 2, "expected exactly 2 vote_cast events");
 
-        let (first_id, first_voter, first_approve) = &vote_events[0];
+        let (first_id, first_voter, first_approve, first_weight) = &vote_events[0];
         assert_eq!(*first_id, id, "first vote_cast proposal_id mismatch");
         assert_eq!(*first_voter, voter_yes, "first vote_cast voter mismatch");
         assert!(*first_approve, "first vote_cast approve must be true");
+        assert_eq!(*first_weight, 1, "first vote_cast weight must be 1");
 
-        let (second_id, second_voter, second_approve) = &vote_events[1];
+        let (second_id, second_voter, second_approve, second_weight) = &vote_events[1];
         assert_eq!(*second_id, id, "second vote_cast proposal_id mismatch");
         assert_eq!(*second_voter, voter_no, "second vote_cast voter mismatch");
         assert!(!*second_approve, "second vote_cast approve must be false");
+        assert_eq!(*second_weight, 1, "second vote_cast weight must be 1");
     }
 
     /// Verify finalize emits a finalized event.

@@ -34,7 +34,7 @@ that implements it and the test that verifies it.
 | 17 | Admin can cancel any Active or Queued proposal | Features table | `cancel_proposal` | `test_cancel_by_admin`, `test_cancel_queued_proposal` | VERIFIED |
 | 18 | Admin role can be transferred to multisig or DAO | Features table | `transfer_admin` | `test_transfer_admin` | VERIFIED |
 | 19 | All proposals and votes persisted on-chain | Features table | `save_proposal`, `record_vote` | `test_create_proposal` | VERIFIED |
-| 20 | Per-proposal config snapshot; later config changes do not affect in-flight proposals | Features table | `create_proposal` copies snap_* fields | `test_config_snapshot_isolation` | VERIFIED |
+| 20 | Per-proposal config snapshot; later config changes do not affect in-flight proposals, including two proposals created at different config states that coexist on the same ledger | Features table | `create_proposal` copies snap_* fields | `test_config_snapshot_isolation`, `test_interleaved_proposals_use_independent_config_snapshots` | VERIFIED |
 | 21 | Voting period runs from proposal creation to `voting_ends_at` | Lifecycle diagram | `create_proposal` sets `voting_ends_at` | `test_vote_at_voting_ends_at_succeeds` | VERIFIED |
 | 22 | Timelock delay runs from `finalize()` to `executable_at` | Lifecycle diagram | `finalize_voting` sets `executable_at` | `test_time_until_executable` | VERIFIED |
 | 23 | `initialize` sets admin and config; can only be called once; admin must sign | API table | `initialize` | `test_initialize_success`, `test_initialize_twice_fails`, `test_auth_initialize_without_auth_fails` | VERIFIED |
@@ -43,7 +43,7 @@ that implements it and the test that verifies it.
 | 26 | `finalize` closes voting after voting period ends; moves to Queued or Defeated; sets `executable_at` | API table | `finalize_voting` | `test_finalize_passes_with_quorum`, `test_finalize_defeated_without_quorum`, `test_finalize_before_voting_ends_fails` | VERIFIED |
 | 27 | `execute` upgrades the target's real WASM from v1 to v2 after the timelock (proven by `test_real_wasm_upgrade_v1_to_v2_through_manager`) | API table | `execute` → `invoke_upgrade` | `test_real_wasm_upgrade_v1_to_v2_through_manager` | VERIFIED |
 | 28 | `cancel` cancels Active or Queued; admin must sign | API table | `cancel_proposal` | `test_cancel_by_admin`, `test_cancel_queued_proposal`, `test_auth_cancel_without_auth_fails` | VERIFIED |
-| 29 | `update_config` changes params; does not affect in-flight proposals | API table | `update_config` | `test_update_config`, `test_config_snapshot_isolation` | VERIFIED |
+| 29 | `update_config` changes params; does not affect in-flight proposals (each finalizes under its own snapshot) | API table | `update_config` | `test_update_config`, `test_config_snapshot_isolation`, `test_interleaved_proposals_use_independent_config_snapshots` | VERIFIED |
 | 30 | `transfer_admin` hands off admin role; admin must sign | API table | `transfer_admin` | `test_transfer_admin`, `test_auth_transfer_admin_without_auth_fails` | VERIFIED |
 | 31 | `get_proposal` fetches proposal by ID | API table | `get_proposal` | `test_create_proposal` (reads proposal back) | VERIFIED |
 | 32 | `get_config` fetches governance config | API table | `get_config` | `test_initialize_success` (reads config back) | VERIFIED |
